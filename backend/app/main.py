@@ -238,6 +238,11 @@ class CameraReorderReq(BaseModel):
     order: List[str]
     apply: bool = True
 
+class CameraSetReq(BaseModel):
+    key: str
+    value: Dict[str, Any]
+    apply: bool = True
+
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
@@ -408,6 +413,28 @@ def api_cam_reorder(req: CameraReorderReq) -> JSONResponse:
         data["order"] = ordered_keys
         return JSONResponse(data)
     return resp
+
+# -----------------------------------------------------------------------------
+# Camera set endpoint
+# -----------------------------------------------------------------------------
+@app.post("/api/cameras/set")
+def api_cam_set(req: CameraSetReq) -> JSONResponse:
+    cfg = manager.get_running_config()
+    if not isinstance(req.value, dict):
+        raise HTTPException(status_code=400, detail="value must be an object")
+
+    new_cfg = _deepcopy(cfg)
+    new_cfg.setdefault("cameras", {})[req.key] = _deepcopy(req.value)
+
+    if not req.apply:
+        diff = manager.diff_configs(cfg, new_cfg)
+        return _ok(dry=True, diff=diff)
+
+    return _apply_with_errors(
+        new_cfg,
+        ws_event="cam_set",
+        ws_payload={"key": req.key},
+    )
 
 # -----------------------------------------------------------------------------
 # WebSocket

@@ -2,26 +2,28 @@
 <meta charset="utf-8" />
 <title>Frigate Hot-Reload</title>
 <style>
-  body { margin:0; font:14px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial; }
+  body { margin:0; font:14px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial; background:#f6f7fb; }
   header { padding:10px 14px; background:#0f172a; color:#fff; display:flex; align-items:center; gap:12px; }
   header h1 { font-size:16px; margin:0; }
   header .actions { margin-left:auto; display:flex; gap:8px; }
   button { padding:6px 10px; border:1px solid #cbd5e1; background:#f8fafc; border-radius:8px; cursor:pointer; }
   button.primary { background:#1d4ed8; color:#fff; border-color:#1d4ed8; }
   button.danger { background:#dc2626; color:#fff; border-color:#dc2626; }
-  .layout { display:grid; grid-template-columns: 320px 1fr; height: calc(100vh - 48px); }
-  .sidebar { border-right:1px solid #e2e8f0; padding:10px; overflow:auto; }
+  button.ghost { background:#fff; }
+  .layout { display:grid; grid-template-columns: 340px 1fr; height: calc(100vh - 48px); }
+  .sidebar { border-right:1px solid #e2e8f0; padding:10px; overflow:auto; background:#fff; }
   .main { padding:12px; overflow:auto; }
-  .card { border:1px solid #e2e8f0; border-radius:12px; padding:12px; margin-bottom:12px; background:#fff; }
+  .card { border:1px solid #e2e8f0; border-radius:12px; padding:12px; margin-bottom:12px; background:#fff; box-shadow:0 1px 0 rgba(0,0,0,.02); }
   .row { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:8px; align-items:end; }
   .row .span2 { grid-column: span 2; }
+  .row .span3 { grid-column: span 3; }
   .row .span4 { grid-column: span 4; }
-  textarea { width:100%; height:200px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; border-radius:8px; border:1px solid #e2e8f0; padding:8px; }
+  textarea { width:100%; height:220px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; border-radius:8px; border:1px solid #e2e8f0; padding:8px; background:#0b1220; color:#cbd5e1; }
   #cfg { transition:background-color .2s ease; }
   .cam-item { display:flex; justify-content:space-between; align-items:center; padding:6px 8px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:6px; background:#fff; }
   .cam-item.active { background:#eff6ff; border-color:#93c5fd; }
   .cam-item .left { display:flex; align-items:center; gap:8px; }
-  .drag-handle { cursor:grab; user-select:none; font-size:18px; }
+  .drag-handle { cursor:grab; user-select:none; font-size:18px; line-height:1; }
   .muted { color:#64748b; font-size:12px; }
   input[type="text"], input[type="number"] { width:100%; border:1px solid #e2e8f0; border-radius:8px; padding:6px 8px; }
   select { width:100%; border:1px solid #e2e8f0; border-radius:8px; padding:6px 8px; }
@@ -29,6 +31,9 @@
   pre { white-space:pre-wrap; background:#0b1220; color:#cbd5e1; padding:10px; border-radius:8px; }
   .inline-actions { display:flex; gap:6px; }
   .ghost { opacity: 0.4; }
+  .drop-marker { height: 0; border-top: 2px solid #1d4ed8; margin: 4px 0; }
+  .banner { position:fixed; left:50%; transform:translateX(-50%); bottom:16px; background:#0f172a; color:#fff; padding:10px 14px; border-radius:10px; display:flex; align-items:center; gap:10px; box-shadow:0 10px 30px rgba(0,0,0,.15); }
+  .banner .timer { font-variant-numeric: tabular-nums; }
 </style>
 
 <header>
@@ -58,7 +63,7 @@
           <input id="cloneTarget" type="text" placeholder="cam2" />
         </div>
         <div class="span4" style="display:flex; gap:8px;">
-          <button id="cloneFromSelected">Clone from selected</button>
+          <button id="cloneFromSelected" class="ghost">Clone from selected</button>
           <button id="cloneApply" class="primary">Clone Apply</button>
         </div>
       </div>
@@ -87,18 +92,38 @@
   </main>
 </div>
 
+<div id="undoBanner" class="banner" style="display:none;">
+  Deleted <strong id="undoKey"></strong>. Undo in <span class="timer" id="undoTimer">10</span>s
+  <button id="undoBtn" class="ghost">Undo</button>
+</div>
+
 <script>
 const $ = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 const log = (m) => { const el = $('#log'); el.textContent += (typeof m==='string'?m:JSON.stringify(m)) + '\n'; el.scrollTop = el.scrollHeight; };
 
 let state = { cfg: {}, selected: null };
+let undo = { key: null, value: null, t: null, left: 0, timerId: null };
 
 async function fetchJSON(url, opts={}){
   const res = await fetch(url, { credentials:'same-origin', ...opts });
   const txt = await res.text();
   try { return { ok: res.ok, status: res.status, data: JSON.parse(txt) }; }
   catch { return { ok: res.ok, status: res.status, data: txt }; }
+}
+
+function isValidKey(k){
+  return /^[A-Za-z0-9_-]+$/.test(k);
+}
+function assertCloneInputs(){
+  const src = $('#cloneSource').value.trim();
+  const tgt = $('#cloneTarget').value.trim();
+  if(!src || !tgt) return { ok:false, msg:'Source/Target required' };
+  if(!isValidKey(src) || !isValidKey(tgt)) return { ok:false, msg:'Only letters, digits, _ and - are allowed' };
+  const keys = Object.keys(state.cfg.cameras || {});
+  if(!keys.includes(src)) return { ok:false, msg:`Source '${src}' not found` };
+  if(keys.includes(tgt)) return { ok:true, warn:`Target '${tgt}' exists. It will be overwritten.` };
+  return { ok:true };
 }
 
 function renderCamList(){
@@ -108,7 +133,7 @@ function renderCamList(){
   const keys = Object.keys(cams);
   $('#camCount').textContent = keys.length;
 
-  keys.forEach((k, idx) => {
+  keys.forEach((k) => {
     const item = document.createElement('div');
     item.className = 'cam-item' + (state.selected===k?' active':'');
     item.draggable = true;
@@ -128,36 +153,60 @@ function renderCamList(){
     const selBtn = document.createElement('button'); selBtn.textContent = 'Select';
     selBtn.onclick = () => { state.selected = k; $('#cloneSource').value = k; renderCamList(); };
     const delBtn = document.createElement('button'); delBtn.textContent = 'Delete'; delBtn.className='danger';
-    delBtn.onclick = async () => {
-      if(!confirm(`Delete camera ${k}?`)) return;
-      const res = await fetchJSON('/api/cameras/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key:k, apply:true }) });
-      log(res.data);
-      await loadConfig();
-    };
+    delBtn.onclick = () => softDelete(k);
     actions.appendChild(selBtn); actions.appendChild(delBtn);
 
     item.appendChild(left); item.appendChild(actions);
 
-    // DnD handlers
-    item.addEventListener('dragstart', (e)=>{ item.classList.add('ghost'); e.dataTransfer.setData('text/plain', k); });
+    // DnD handlers (with marker)
+    item.addEventListener('dragstart', (e)=>{
+      item.classList.add('ghost');
+      e.dataTransfer.setData('text/plain', k);
+    });
     item.addEventListener('dragend', ()=> item.classList.remove('ghost'));
-    item.addEventListener('dragover', (e)=>{ e.preventDefault(); });
+    item.addEventListener('dragover', (e)=>{
+      e.preventDefault();
+      const rect = item.getBoundingClientRect();
+      const before = (e.clientY - rect.top) < rect.height/2;
+      showMarker(item, before);
+    });
+    item.addEventListener('dragleave', ()=> hideMarker(item));
     item.addEventListener('drop', async (e)=>{
       e.preventDefault();
+      hideMarker(item);
       const src = e.dataTransfer.getData('text/plain');
       const dst = k;
-      if(src===dst) return;
-      const order = Object.keys(state.cfg.cameras);
-      const from = order.indexOf(src);
-      const to = order.indexOf(dst);
-      order.splice(to, 0, order.splice(from,1)[0]);
-      const res = await fetchJSON('/api/cameras/reorder', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ order, apply:true }) });
-      log(res.data);
-      await loadConfig();
+      if(!src || src===dst) return;
+      await reorderByDrop(src, dst, item.dataset.before === 'true');
     });
 
     wrap.appendChild(item);
   });
+}
+
+function showMarker(item, before){
+  hideMarker(item);
+  const m = document.createElement('div');
+  m.className = 'drop-marker';
+  item.dataset.before = before ? 'true' : 'false';
+  if(before) item.parentNode.insertBefore(m, item); else item.after(m);
+  item._marker = m;
+}
+function hideMarker(item){
+  if(item && item._marker){ item._marker.remove(); item._marker = null; }
+}
+
+async function reorderByDrop(srcKey, dstKey, placeBefore){
+  const order = Object.keys(state.cfg.cameras);
+  const from = order.indexOf(srcKey);
+  let to = order.indexOf(dstKey);
+  if(from === -1 || to === -1) return;
+  const [moved] = order.splice(from,1);
+  if(!placeBefore) to += (from < to ? 0 : 1); // dropping after
+  order.splice(to, 0, moved);
+  const res = await fetchJSON('/api/cameras/reorder', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ order, apply:true }) });
+  log(res.data);
+  await loadConfig();
 }
 
 async function loadConfig(){
@@ -166,6 +215,49 @@ async function loadConfig(){
     state.cfg = res.data; $('#cfg').value = JSON.stringify(state.cfg, null, 2); renderCamList();
   } else { log(res.data); }
 }
+
+async function softDelete(key){
+  // буферирай изтритата камера и покажи Undo
+  const cam = (state.cfg.cameras || {})[key];
+  if(!cam) return;
+  undo.value = JSON.parse(JSON.stringify(cam));
+  undo.key = key;
+  undo.left = 10;
+  $('#undoKey').textContent = key;
+  $('#undoTimer').textContent = undo.left;
+  $('#undoBanner').style.display = 'flex';
+
+  const res = await fetchJSON('/api/cameras/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key, apply:true }) });
+  log(res.data);
+  await loadConfig();
+
+  clearInterval(undo.timerId);
+  undo.timerId = setInterval(()=>{
+    undo.left -= 1;
+    $('#undoTimer').textContent = undo.left;
+    if(undo.left <= 0){ hideUndo(); }
+  }, 1000);
+}
+
+function hideUndo(){
+  clearInterval(undo.timerId);
+  undo.timerId = null;
+  $('#undoBanner').style.display = 'none';
+  undo.key = null; undo.value = null; undo.left = 0;
+}
+
+$('#undoBtn').onclick = async ()=>{
+  if(!undo.key || !undo.value) return hideUndo();
+  const res = await fetchJSON('/api/cameras/set', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ key: undo.key, value: undo.value, apply: true })
+  });
+  log(res.data);
+  if(!res.ok){ alert('Undo failed: ' + (res.data?.error?.error || res.status)); }
+  hideUndo();
+  await loadConfig();
+};
 
 $('#applyDry').onclick = async ()=>{
   const body = JSON.stringify(JSON.parse($('#cfg').value));
@@ -199,21 +291,24 @@ $('#importBtn').onclick = async ()=>{
 };
 
 $('#cloneFromSelected').onclick = async ()=>{
+  const check = assertCloneInputs();
+  if(!check.ok) return alert(check.msg);
+  if(check.warn && !confirm(check.warn + ' Proceed?')) return;
   const src = $('#cloneSource').value.trim();
   const tgt = $('#cloneTarget').value.trim();
-  if(!src || !tgt) return alert('Fill source and target');
   const res = await fetchJSON('/api/cameras/clone', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ source_key: src, target_key: tgt, overwrite: true, apply: true }) });
   log(res.data);
   await loadConfig();
 };
 
 $('#cloneApply').onclick = async ()=>{
+  const check = assertCloneInputs();
+  if(!check.ok) return alert(check.msg);
+  if(check.warn && !confirm(check.warn + ' Proceed?')) return;
   const src = $('#cloneSource').value.trim();
   const tgt = $('#cloneTarget').value.trim();
-  if(!src || !tgt) return alert('Fill source and target');
   const res = await fetchJSON('/api/cameras/clone', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
+    method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ source_key: src, target_key: tgt, overwrite: true, apply: true })
   });
   log(res.data);
