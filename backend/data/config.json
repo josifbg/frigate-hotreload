@@ -1,0 +1,191 @@
+{
+  "mqtt": {
+    "host": "mqtt",
+    "port": 1883,
+    "user": null,
+    "password": null,
+    "topic_prefix": "frigate"
+  },
+  "cameras": {
+    "cam1": {
+      "name": "cam1",
+      "enabled": true,
+      "ffmpeg": {
+        "url": "",
+        "hwaccel": null,
+        "width": 1980,
+        "height": 1080,
+        "fps": 5
+      },
+      "zones": [
+        {
+          "name": "door",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              0
+            ],
+            [
+              100,
+              100
+            ],
+            [
+              0,
+              100
+            ]
+          ]
+        }
+      ],
+      "detection": {
+        "score_threshold": 0.6,
+        "iou_threshold": 0.45
+      },
+      "retention": {
+        "mode": "motion",
+        "detection_days": 5,
+        "recording_days": 2,
+        "pre_capture_sec": 3,
+        "post_capture_sec": 3
+      }
+    },
+    "cam2": {
+      "name": "cam1",
+      "enabled": true,
+      "ffmpeg": {
+        "url": "",
+        "hwaccel": null,
+        "width": 1980,
+        "height": 1080,
+        "fps": 5
+      },
+      "zones": [
+        {
+          "name": "door",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              0
+            ],
+            [
+              100,
+              100
+            ],
+            [
+              0,
+              100
+            ]
+          ]
+        }
+      ],
+      "detection": {
+        "score_threshold": 0.6,
+        "iou_threshold": 0.45
+      },
+      "retention": {
+        "mode": "motion",
+        "detection_days": 5,
+        "recording_days": 2,
+        "pre_capture_sec": 3,
+        "post_capture_sec": 3
+      }
+    },
+    "cam3": {
+      "name": "cam1",
+      "enabled": true,
+      "ffmpeg": {
+        "url": "",
+        "hwaccel": null,
+        "width": 1980,
+        "height": 1080,
+        "fps": 5
+      },
+      "zones": [
+        {
+          "name": "door",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              0
+            ],
+            [
+              100,
+              100
+            ],
+            [
+              0,
+              100
+            ]
+          ]
+        }
+      ],
+      "detection": {
+        "score_threshold": 0.6,
+        "iou_threshold": 0.45
+      },
+      "retention": {
+        "mode": "motion",
+        "detection_days": 5,
+        "recording_days": 2,
+        "pre_capture_sec": 3,
+        "post_capture_sec": 3
+      }
+    },
+    "cam4": {
+      "name": "cam1",
+      "enabled": true,
+      "ffmpeg": {
+        "url": "",
+        "hwaccel": null,
+        "width": 1980,
+        "height": 1080,
+        "fps": 5
+      },
+      "zones": [
+        {
+          "name": "door",
+          "points": [
+            [
+              0,
+              0
+            ],
+            [
+              100,
+              0
+            ],
+            [
+              100,
+              100
+            ],
+            [
+              0,
+              100
+            ]
+          ]
+        }
+      ],
+      "detection": {
+        "score_threshold": 0.6,
+        "iou_threshold": 0.45
+      },
+      "retention": {
+        "mode": "motion",
+        "detection_days": 5,
+        "recording_days": 2,
+        "pre_capture_sec": 3,
+        "post_capture_sec": 3
+      }
+    }
+  }
+}
