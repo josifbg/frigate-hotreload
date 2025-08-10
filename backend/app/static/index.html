@@ -9,448 +9,216 @@
   button { padding:6px 10px; border:1px solid #cbd5e1; background:#f8fafc; border-radius:8px; cursor:pointer; }
   button.primary { background:#1d4ed8; color:#fff; border-color:#1d4ed8; }
   button.danger { background:#dc2626; color:#fff; border-color:#dc2626; }
-  .layout { display:grid; grid-template-columns: 280px 1fr; height: calc(100vh - 48px); }
+  .layout { display:grid; grid-template-columns: 320px 1fr; height: calc(100vh - 48px); }
   .sidebar { border-right:1px solid #e2e8f0; padding:10px; overflow:auto; }
   .main { padding:12px; overflow:auto; }
-  .card { border:1px solid #e2e8f0; border-radius:12px; padding:12px; margin-bottom:12px; }
+  .card { border:1px solid #e2e8f0; border-radius:12px; padding:12px; margin-bottom:12px; background:#fff; }
   .row { display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:8px; align-items:end; }
   .row .span2 { grid-column: span 2; }
   .row .span4 { grid-column: span 4; }
   textarea { width:100%; height:200px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; border-radius:8px; border:1px solid #e2e8f0; padding:8px; }
   #cfg { transition:background-color .2s ease; }
-  .cam-item { display:flex; justify-content:space-between; align-items:center; padding:6px 8px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:6px; }
+  .cam-item { display:flex; justify-content:space-between; align-items:center; padding:6px 8px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:6px; background:#fff; }
   .cam-item.active { background:#eff6ff; border-color:#93c5fd; }
+  .cam-item .left { display:flex; align-items:center; gap:8px; }
+  .drag-handle { cursor:grab; user-select:none; font-size:18px; }
   .muted { color:#64748b; font-size:12px; }
   input[type="text"], input[type="number"] { width:100%; border:1px solid #e2e8f0; border-radius:8px; padding:6px 8px; }
   select { width:100%; border:1px solid #e2e8f0; border-radius:8px; padding:6px 8px; }
   .hint { font-size:12px; color:#8a6d3b; margin-top:6px; }
   pre { white-space:pre-wrap; background:#0b1220; color:#cbd5e1; padding:10px; border-radius:8px; }
+  .inline-actions { display:flex; gap:6px; }
+  .ghost { opacity: 0.4; }
 </style>
 
 <header>
   <h1>Frigate Hot-Reload</h1>
   <div class="actions">
-    <button id="preview" title="Preview diff">Preview</button>
-    <button id="apply" class="primary" title="Apply changes">Apply</button>
-    <button id="resetToDisk" title="Reset running from disk">Reset</button>
-    <button id="exportCfg" title="Export running config">Export</button>
-    <label class="muted">Import <input id="importFile" type="file" accept="application/json"></label>
-    <button id="importCfg">Import</button>
+    <button id="refresh">Refresh</button>
+    <button id="export">Export</button>
+    <button id="importBtn">Import</button>
   </div>
 </header>
 
 <div class="layout">
   <aside class="sidebar">
     <div class="card">
-      <div class="row span4">
-        <div class="span4"><b>Cameras</b></div>
-        <div class="span4 muted" id="camCount"></div>
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <strong>Cameras</strong>
+        <span class="muted" id="camCount">0</span>
       </div>
       <div id="camList"></div>
       <div class="row" style="margin-top:8px;">
-        <input id="newCamKey" type="text" placeholder="new camera key (e.g. cam2)">
-        <button id="addNewCam">Add</button>
-        <button id="cloneFromSelected">Clone from selected</button>
-        <button id="cloneAndApply">Clone + Apply</button>
-        <input id="bulkKeys" class="span2" type="text" placeholder="cam2,cam3 or cam2..cam8">
-        <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" id="overwriteExisting"> Overwrite</label>
-        <button id="bulkClone" class="span2">Bulk clone</button>
+        <div class="span2">
+          <label class="muted">Source key</label>
+          <input id="cloneSource" type="text" placeholder="cam1" />
+        </div>
+        <div class="span2">
+          <label class="muted">Target key</label>
+          <input id="cloneTarget" type="text" placeholder="cam2" />
+        </div>
+        <div class="span4" style="display:flex; gap:8px;">
+          <button id="cloneFromSelected">Clone from selected</button>
+          <button id="cloneApply" class="primary">Clone Apply</button>
+        </div>
       </div>
-    </div>
-
-    <div class="card">
-      <b>Backups</b>
-      <div class="row" style="margin-top:6px;">
-        <button id="listBackups">List</button>
-        <button id="rollbackLatest">Rollback latest</button>
-        <input id="rbName" type="text" placeholder="YYYY-MM-DD_HH-MM-SS.json" class="span2">
-        <button id="rollbackByName">Rollback</button>
-      </div>
+      <div class="hint">Tip: влачи и пускай камерите, за да пренареждаш. Промените се прилагат веднага.</div>
     </div>
   </aside>
 
   <main class="main">
     <div class="card">
-      <b>Camera editor</b>
-      <div class="row" style="margin-top:6px;">
-        <label>Selected<br><select id="camSelect"></select></label>
-        <label>Key<br><input id="camKey" type="text" placeholder="cam1"></label>
-        <label class="span2" style="display:flex;align-items:center;gap:8px;margin-top:22px;">
-          <input type="checkbox" id="renameMode"> Rename (move key)
-          <button id="deleteCam" class="danger">Delete</button>
-        </label>
-
-        <label>Name<br><input id="camName" type="text"></label>
-        <label class="span2">RTSP URL<br><input id="camUrl" type="text" placeholder="rtsp://..."></label>
-        <label>FPS<br><input id="camFps" type="number"></label>
-
-        <label>Width<br><input id="camW" type="number"></label>
-        <label>Height<br><input id="camH" type="number"></label>
-        <label>Score thr.<br><input id="score" type="number" step="0.01" value="0.6"></label>
-        <label>IoU thr.<br><input id="iou" type="number" step="0.01" value="0.45"></label>
-
-        <div class="span4">
-          <button id="addCam" title="Insert/update camera in JSON">Insert/Update in JSON</button>
-          <span class="muted">Use Preview/Apply to validate & persist.</span>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <strong>Config JSON</strong>
+        <span class="muted">(auto-load / apply)</span>
+        <div class="inline-actions" style="margin-left:auto;">
+          <button id="applyDry">Preview (dry)</button>
+          <button id="applyCfg" class="primary">Apply</button>
+          <button id="rollback" class="danger">Rollback latest</button>
         </div>
       </div>
-    </div>
-
-    <div class="card">
-      <b>Raw JSON (optional)</b>
       <textarea id="cfg"></textarea>
-      <div id="dirtyHint" class="hint"></div>
+      <div id="preview" class="hint"></div>
     </div>
-
     <div class="card">
-      <b>Status</b>
-      <pre id="out"></pre>
+      <strong>Logs</strong>
+      <pre id="log"></pre>
     </div>
   </main>
 </div>
 
 <script>
-const out = document.getElementById('out');
-const cfgBox = document.getElementById('cfg');
-const dirtyHint = document.getElementById('dirtyHint');
-const camList = document.getElementById('camList');
-const $ = id => document.getElementById(id);
-function log(x){ out.textContent = (typeof x==='string'?x:JSON.stringify(x,null,2)); }
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const log = (m) => { const el = $('#log'); el.textContent += (typeof m==='string'?m:JSON.stringify(m)) + '\n'; el.scrollTop = el.scrollHeight; };
 
-// always include credentials so Basic Auth works
-const FOPTS = { credentials: 'include' };
+let state = { cfg: {}, selected: null };
 
-// helpers
-let lastLoadedText = '';
-function getCfgObj() {
-  try { return JSON.parse(cfgBox.value || '{}'); } catch { return {}; }
+async function fetchJSON(url, opts={}){
+  const res = await fetch(url, { credentials:'same-origin', ...opts });
+  const txt = await res.text();
+  try { return { ok: res.ok, status: res.status, data: JSON.parse(txt) }; }
+  catch { return { ok: res.ok, status: res.status, data: txt }; }
 }
-function setCfgObj(obj) { cfgBox.value = JSON.stringify(obj, null, 2); updateDirty(); }
-function rememberSelection(key){ try{ localStorage.setItem('selCam', key);}catch{} }
-function restoreSelection(){ try{ return localStorage.getItem('selCam') || null;}catch{ return null; } }
 
-function populateSelect(keys, selected) {
-  const sel = $('camSelect');
-  sel.innerHTML = '';
-  keys.forEach(k=>{
-    const opt = document.createElement('option');
-    opt.value = k; opt.textContent = k;
-    if (k === selected) opt.selected = true;
-    sel.appendChild(opt);
+function renderCamList(){
+  const wrap = $('#camList');
+  wrap.innerHTML = '';
+  const cams = state.cfg.cameras || {};
+  const keys = Object.keys(cams);
+  $('#camCount').textContent = keys.length;
+
+  keys.forEach((k, idx) => {
+    const item = document.createElement('div');
+    item.className = 'cam-item' + (state.selected===k?' active':'');
+    item.draggable = true;
+    item.dataset.key = k;
+
+    const left = document.createElement('div');
+    left.className = 'left';
+    const drag = document.createElement('span');
+    drag.className = 'drag-handle';
+    drag.textContent = '⋮⋮';
+    const name = document.createElement('strong');
+    name.textContent = k + (cams[k]?.name ? `  (${cams[k].name})` : '');
+    left.appendChild(drag); left.appendChild(name);
+
+    const actions = document.createElement('div');
+    actions.className = 'inline-actions';
+    const selBtn = document.createElement('button'); selBtn.textContent = 'Select';
+    selBtn.onclick = () => { state.selected = k; $('#cloneSource').value = k; renderCamList(); };
+    const delBtn = document.createElement('button'); delBtn.textContent = 'Delete'; delBtn.className='danger';
+    delBtn.onclick = async () => {
+      if(!confirm(`Delete camera ${k}?`)) return;
+      const res = await fetchJSON('/api/cameras/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key:k, apply:true }) });
+      log(res.data);
+      await loadConfig();
+    };
+    actions.appendChild(selBtn); actions.appendChild(delBtn);
+
+    item.appendChild(left); item.appendChild(actions);
+
+    // DnD handlers
+    item.addEventListener('dragstart', (e)=>{ item.classList.add('ghost'); e.dataTransfer.setData('text/plain', k); });
+    item.addEventListener('dragend', ()=> item.classList.remove('ghost'));
+    item.addEventListener('dragover', (e)=>{ e.preventDefault(); });
+    item.addEventListener('drop', async (e)=>{
+      e.preventDefault();
+      const src = e.dataTransfer.getData('text/plain');
+      const dst = k;
+      if(src===dst) return;
+      const order = Object.keys(state.cfg.cameras);
+      const from = order.indexOf(src);
+      const to = order.indexOf(dst);
+      order.splice(to, 0, order.splice(from,1)[0]);
+      const res = await fetchJSON('/api/cameras/reorder', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ order, apply:true }) });
+      log(res.data);
+      await loadConfig();
+    });
+
+    wrap.appendChild(item);
   });
 }
 
-function renderCamList(keys, selected) {
-  camList.innerHTML = '';
-  $('camCount').textContent = keys.length ? `${keys.length} cameras` : 'No cameras';
-  keys.forEach(k=>{
-    const div = document.createElement('div');
-    div.className = 'cam-item' + (k===selected?' active':'');
-    const left = document.createElement('div'); left.textContent = k;
-    const btn = document.createElement('button'); btn.textContent = 'Select';
-    btn.onclick = () => { selectCamera(k); };
-    div.appendChild(left); div.appendChild(btn);
-    camList.appendChild(div);
-  });
+async function loadConfig(){
+  const res = await fetchJSON('/api/config');
+  if(res.ok) {
+    state.cfg = res.data; $('#cfg').value = JSON.stringify(state.cfg, null, 2); renderCamList();
+  } else { log(res.data); }
 }
 
-function selectCamera(key) {
-  const cfg = getCfgObj();
-  if (!cfg.cameras || !cfg.cameras[key]) return;
-  $('camSelect').value = key;
-  $('camKey').value = key;
-  const c = cfg.cameras[key];
-  $('camName').value = c.name || '';
-  $('camUrl').value  = c.ffmpeg?.url || '';
-  $('camFps').value  = c.ffmpeg?.fps ?? '';
-  $('camW').value    = c.ffmpeg?.width ?? '';
-  $('camH').value    = c.ffmpeg?.height ?? '';
-  $('score').value   = c.detection?.score_threshold ?? 0.6;
-  $('iou').value     = c.detection?.iou_threshold ?? 0.45;
-  rememberSelection(key);
-  renderCamList(Object.keys(cfg.cameras||{}), key);
-  log('Camera loaded: '+key);
-}
-
-function updateDirty(){
-  const current = cfgBox.value.trim();
-  const dirty = current !== (lastLoadedText.trim());
-  cfgBox.style.backgroundColor = dirty ? 'lemonchiffon' : 'white';
-  dirtyHint.textContent = dirty ? 'Unsaved changes (differs from running config)' : '';
-}
-
-// load current config
-async function loadCfg(){
-  const r = await fetch('/api/config', FOPTS);
-  const j = await r.json();
-  const text = JSON.stringify(j, null, 2);
-  lastLoadedText = text;
-  cfgBox.value = text;
-  updateDirty();
-
-  const keys = Object.keys(j.cameras || {});
-  const preferred = restoreSelection();
-  const selected = (preferred && keys.includes(preferred)) ? preferred : (keys[0] || '');
-  populateSelect(keys, selected);
-  renderCamList(keys, selected);
-  if (selected) selectCamera(selected);
-  else {
-    $('camKey').value = '';
-    $('camName').value = '';
-    $('camUrl').value  = '';
-    $('camFps').value  = '';
-    $('camW').value    = '';
-    $('camH').value    = '';
-    $('score').value   = 0.6;
-    $('iou').value     = 0.45;
-  }
-  log('Loaded current config');
-}
-
-$('camSelect').addEventListener('change', ()=>{
-  const sel = $('camSelect').value;
-  selectCamera(sel);
-});
-
-// build config from form
-function buildCfgFromForm(){
-  const oldKey = $('camSelect').value.trim();
-  const newKey = $('camKey').value.trim() || oldKey;
-  const rename = $('renameMode').checked;
-
-  const name  = $('camName').value.trim();
-  const url   = $('camUrl').value.trim();
-  const fps   = Number($('camFps').value);
-  const w     = Number($('camW').value);
-  const h     = Number($('camH').value);
-  const score = Number($('score').value);
-  const iou   = Number($('iou').value);
-
-  let cfg = getCfgObj();
-  cfg.mqtt = cfg.mqtt || {host:"mqtt",port:1883,topic_prefix:"frigate"};
-  cfg.cameras = cfg.cameras || {};
-
-  const camObj = {
-    name: name || newKey, enabled: true,
-    ffmpeg: {url, width:w||undefined, height:h||undefined, fps:fps||undefined},
-    zones: [{name:"door", points:[[0,0],[100,0],[100,100],[0,100]]}],
-    detection: {score_threshold: score || 0.6, iou_threshold: iou || 0.45},
-    retention: {mode:"motion", detection_days:5, recording_days:2, pre_capture_sec:3, post_capture_sec:3}
-  };
-
-  if (rename && oldKey && newKey && newKey !== oldKey) {
-    delete cfg.cameras[oldKey];
-  }
-  cfg.cameras[newKey] = camObj;
-
-  setCfgObj(cfg);
-  const keys = Object.keys(cfg.cameras || {});
-  populateSelect(keys, newKey);
-  renderCamList(keys, newKey);
-  rememberSelection(newKey);
-  return cfg;
-}
-
-async function preview(){
-  const body = JSON.stringify(buildCfgFromForm());
-  const r = await fetch('/api/config/apply?dry=true',{...FOPTS, method:'POST',headers:{'Content-Type':'application/json'},body});
-  log(await r.json());
-}
-async function applyCfg(){
-  const body = JSON.stringify(buildCfgFromForm());
-  const r = await fetch('/api/config/apply',{...FOPTS, method:'POST',headers:{'Content-Type':'application/json'},body});
-  const j = await r.json();
-  log(j);
-  if (j.ok) await loadCfg();
-}
-function addCamOnly(){
-  buildCfgFromForm();
-  log('Camera inserted/updated in JSON. Use Preview/Apply.');
-}
-function deleteCam(){
-  const sel = $('camSelect').value.trim();
-  const cfg = getCfgObj();
-  if (cfg.cameras && cfg.cameras[sel]) {
-    delete cfg.cameras[sel];
-    setCfgObj(cfg);
-    const keys = Object.keys(cfg.cameras || {});
-    const next = keys[0] || '';
-    populateSelect(keys, next);
-    renderCamList(keys, next);
-    $('camKey').value = next;
-    rememberSelection(next);
-    log('Deleted camera: '+sel+' (not yet applied)');
-  } else {
-    log('Nothing to delete.');
-  }
-}
-
-// parse keys list input
-function parseKeys(input){
-  input = (input||'').trim();
-  if (!input) return [];
-  const out = new Set();
-  if (input.includes('..')){
-    const [a,b] = input.split('..').map(s=>s.trim());
-    if (a && b){
-      const m1 = a.match(/^(.*?)(\d+)$/); const m2 = b.match(/^(.*?)(\d+)$/);
-      if (m1 && m2 && m1[1] === m2[1]){
-        const prefix = m1[1];
-        let start = parseInt(m1[2],10); let end = parseInt(m2[2],10);
-        if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start){
-          const pad = Math.max(m1[2].length, m2[2].length);
-          for (let n=start;n<=end;n++){
-            const num = String(n).padStart(pad,'0');
-            out.add(prefix+num);
-          }
-        }
-      }
-    }
-  }
-  input.replace(/\s+/g,',').split(',').map(s=>s.trim()).filter(Boolean).forEach(k=>out.add(k));
-  return Array.from(out);
-}
-
-// clone selected camera to a new key
-function cloneFromSelected(){
-  const sourceKey = $('camSelect').value.trim();
-  const targetKey = $('newCamKey').value.trim();
-  if (!sourceKey){ log('Select a source camera to clone.'); return; }
-  if (!targetKey){ log('Enter target key in the input next to Clone.'); return; }
-
-  const cfg = getCfgObj();
-  if (!cfg.cameras || !cfg.cameras[sourceKey]){ log('Source camera not found.'); return; }
-
-  const src = JSON.parse(JSON.stringify(cfg.cameras[sourceKey]));
-  if (!src.name) src.name = targetKey;
-
-  cfg.cameras = cfg.cameras || {};
-  cfg.cameras[targetKey] = src;
-
-  setCfgObj(cfg);
-  const keys = Object.keys(cfg.cameras || {});
-  populateSelect(keys, targetKey);
-  renderCamList(keys, targetKey);
-  rememberSelection(targetKey);
-  selectCamera(targetKey);
-  log(`Cloned '${sourceKey}' → '${targetKey}'. Use Preview/Apply to persist.`);
-}
-
-// bulk clone multiple target keys from the currently selected source key
-function bulkClone(){
-  const sourceKey = $('camSelect').value.trim();
-  const listStr   = $('bulkKeys').value.trim();
-  const overwrite = $('overwriteExisting').checked;
-  if (!sourceKey){ log('Select a source camera to clone.'); return; }
-  const targets = parseKeys(listStr);
-  if (!targets.length){ log('Enter target keys (e.g. "cam2, cam3" or range "cam02..cam10").'); return; }
-
-  const cfg = getCfgObj();
-  if (!cfg.cameras || !cfg.cameras[sourceKey]){ log('Source camera not found.'); return; }
-
-  const src = JSON.parse(JSON.stringify(cfg.cameras[sourceKey]));
-  let created = [], skipped = [], replaced = [];
-  cfg.cameras = cfg.cameras || {};
-  for (const t of targets){
-    if (cfg.cameras[t] && !overwrite){ skipped.push(t); continue; }
-    if (cfg.cameras[t] && overwrite){ replaced.push(t); }
-    const clone = JSON.parse(JSON.stringify(src));
-    if (!clone.name) clone.name = t;
-    cfg.cameras[t] = clone;
-    created.push(t);
-  }
-
-  setCfgObj(cfg);
-  const keys = Object.keys(cfg.cameras || {});
-  const focusKey = created[0] || replaced[0] || targets[0];
-  populateSelect(keys, focusKey);
-  renderCamList(keys, focusKey);
-  rememberSelection(focusKey);
-  if (focusKey) selectCamera(focusKey);
-  log({event:'bulk_clone', source: sourceKey, created, replaced, skipped});
-}
-
-// handlers for clone buttons
-$('cloneFromSelected').onclick = cloneFromSelected;
-$('cloneAndApply').onclick = async ()=>{ cloneFromSelected(); await applyCfg(); };
-$('bulkClone').onclick = bulkClone;
-
-// backup / rollback / reset / export / import handlers remain unchanged
-async function listBackups(){
-  const r = await fetch('/api/config/backups', FOPTS); log(await r.json());
-}
-async function rollbackLatest(){
-  const r = await fetch('/api/config/rollback',{...FOPTS, method:'POST'}); const j = await r.json(); log(j);
-  if (j.ok) await loadCfg();
-}
-async function rollbackByName(){
-  const name = document.getElementById('rbName').value.trim();
-  if(!name){ log('Enter backup file name (from List backups)'); return; }
-  const r = await fetch('/api/config/rollback?name='+encodeURIComponent(name), {...FOPTS, method:'POST'}); const j = await r.json(); log(j);
-  if (j.ok) await loadCfg();
-}
-async function resetToDisk(){
-  const r = await fetch('/api/config/reset', {...FOPTS, method:'POST'}); const j = await r.json(); log(j);
-  if (j.ok) await loadCfg();
-}
-async function exportCfg(){
-  const r = await fetch('/api/config/export', FOPTS);
-  const blob = await r.blob();
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'config.json';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-  log('Exported running config.');
-}
-async function importCfg(){
-  const f = document.getElementById('importFile').files[0];
-  if (!f) { log('Choose a JSON file to import.'); return; }
-  const text = await f.text();
-  let obj; try { obj = JSON.parse(text); } catch { log('Invalid JSON file.'); return; }
-  const r = await fetch('/api/config/import', {...FOPTS, method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(obj)});
-  const j = await r.json(); log(j);
-  if (j.ok) await loadCfg();
-}
-
-// addNewCam handler
-$('addNewCam').onclick = ()=>{
-  const key = $('newCamKey').value.trim();
-  if (!key) { log('Enter new camera key'); return; }
-  $('camSelect').value = key; $('camKey').value = key;
-  $('camName').value = key; $('camUrl').value = ''; $('camFps').value=''; $('camW').value=''; $('camH').value='';
-  $('score').value = 0.6; $('iou').value = 0.45;
-  $('renameMode').checked = false;
-  addCamOnly();
+$('#applyDry').onclick = async ()=>{
+  const body = JSON.stringify(JSON.parse($('#cfg').value));
+  const res = await fetchJSON('/api/config/apply?dry=true', { method:'POST', headers:{'Content-Type':'application/json'}, body });
+  $('#preview').textContent = res.ok ? 'Preview OK' : ('Error: ' + JSON.stringify(res.data));
+  log(res.data);
 };
 
-// basic event handlers
-$('preview').onclick = preview;
-$('apply').onclick = applyCfg;
-$('addCam').onclick = addCamOnly;
-$('deleteCam').onclick = deleteCam;
-document.getElementById('listBackups').onclick = listBackups;
-document.getElementById('rollbackLatest').onclick = rollbackLatest;
-document.getElementById('rollbackByName').onclick = rollbackByName;
-document.getElementById('resetToDisk').onclick = resetToDisk;
-document.getElementById('exportCfg').onclick = exportCfg;
-document.getElementById('importCfg').onclick = importCfg;
+$('#applyCfg').onclick = async ()=>{
+  const body = JSON.stringify(JSON.parse($('#cfg').value));
+  const res = await fetchJSON('/api/config/apply', { method:'POST', headers:{'Content-Type':'application/json'}, body });
+  log(res.data);
+  await loadConfig();
+};
 
-// dirty indicator on manual edits
-cfgBox.addEventListener('input', updateDirty);
+$('#rollback').onclick = async ()=>{
+  const res = await fetchJSON('/api/config/rollback', { method:'POST' });
+  log(res.data);
+  await loadConfig();
+};
 
-// websocket connection
-(function connectWS(){
-  try {
-    const url = (location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/ws';
-    const ws = new WebSocket(url);
-    ws.onopen = () => { log({event:'ws_open', url}); setInterval(()=>{ try{ ws.send('ping'); }catch{} }, 15000); };
-    ws.onmessage = (e) => { try { log(JSON.parse(e.data)); } catch { log(e.data); } };
-    ws.onclose = () => setTimeout(connectWS, 1000);
-  } catch (e) { log('WS error: '+e.message); }
-})();
-loadCfg();
+$('#refresh').onclick = loadConfig;
+$('#export').onclick = () => { window.location = '/api/config/export'; };
+$('#importBtn').onclick = async ()=>{
+  const txt = prompt('Paste JSON config to import:');
+  if(!txt) return;
+  try { JSON.parse(txt); } catch(e){ return alert('Invalid JSON'); }
+  const res = await fetchJSON('/api/config/import', { method:'POST', headers:{'Content-Type':'application/json'}, body: txt });
+  log(res.data);
+  await loadConfig();
+};
+
+$('#cloneFromSelected').onclick = async ()=>{
+  const src = $('#cloneSource').value.trim();
+  const tgt = $('#cloneTarget').value.trim();
+  if(!src || !tgt) return alert('Fill source and target');
+  const res = await fetchJSON('/api/cameras/clone', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ source_key: src, target_key: tgt, overwrite: true, apply: true }) });
+  log(res.data);
+  await loadConfig();
+};
+
+$('#cloneApply').onclick = async ()=>{
+  const src = $('#cloneSource').value.trim();
+  const tgt = $('#cloneTarget').value.trim();
+  if(!src || !tgt) return alert('Fill source and target');
+  const res = await fetchJSON('/api/cameras/clone', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ source_key: src, target_key: tgt, overwrite: true, apply: true })
+  });
+  log(res.data);
+  await loadConfig();
+};
+
+window.addEventListener('DOMContentLoaded', loadConfig);
 </script>

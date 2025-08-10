@@ -1,262 +1,422 @@
 from __future__ import annotations
-import os, base64, secrets
-from typing import Dict, Any, Optional
+import asyncio
+import json
+import traceback
+import logging
+from pathlib import Path
+from typing import Optional, List, Any, Dict
+from types import SimpleNamespace
 
-from fastapi import FastAPI, WebSocket
-from fastapi.responses import JSONResponse, Response
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from starlette.websockets import WebSocketDisconnect
+from pydantic import BaseModel
 
-from .config_schema import RootConfig, CameraConfig, FFmpegInput, Zone
 from .config_manager import ConfigManager
-from .workers.camera_worker import CameraWorker
-from .events import WSBus
-from .storage import (
-    load_config,
-    save_config,
-    list_backups,
-    load_backup,
-    create_backup,
-)
 
-# --- Basic Auth настройки (можеш да смениш с променливи на средата) ---
-ADMIN_USER = os.getenv("FRIGATE_UI_USER", "admin")
-ADMIN_PASS = os.getenv("FRIGATE_UI_PASS", "admin")
+# Опитай да импортнеш Pydantic модела, ако съществува
+try:
+    from .config_schema import Config as ConfigModel  # type: ignore
+except Exception:
+    ConfigModel = None  # type: ignore
 
-def _parse_basic(header: str) -> Optional[tuple[str, str]]:
-    try:
-        if not header or not header.lower().startswith("basic "):
-            return None
-        raw = header.split(" ", 1)[1].strip()
-        decoded = base64.b64decode(raw).decode("utf-8")
-        if ":" not in decoded:
-            return None
-        u, p = decoded.split(":", 1)
-        return u, p
-    except Exception:
-        return None
+# -----------------------------------------------------------------------------
+# Помощници
+# -----------------------------------------------------------------------------
+def _to_attr(obj: Any) -> Any:
+    """Рекурсивно превръща dict/list в обекти с атрибути за достъп (dot-access)."""
+    if isinstance(obj, dict):
+        return SimpleNamespace(**{k: _to_attr(v) for k, v in obj.items()})
+    if isinstance(obj, list):
+        return [_to_attr(x) for x in obj]
+    return obj
 
-def _check_basic(header: str) -> bool:
-    pair = _parse_basic(header)
-    if not pair:
-        return False
-    u, p = pair
-    return secrets.compare_digest(u, ADMIN_USER) and secrets.compare_digest(p, ADMIN_PASS)
+def _as_model_or_attr(raw_cfg: dict) -> Any:
+    """Предпочитай Pydantic модел; иначе dot-access обект."""
+    if ConfigModel is not None:
+        try:
+            return ConfigModel(**raw_cfg)  # типово-сигурно, има .mqtt и т.н.
+        except Exception:
+            pass
+    return _to_attr(raw_cfg)
 
-def _need_auth(path: str) -> bool:
-    # Пази /ui, /api, /ws, /docs, /openapi зад Basic; остави /test отворено.
-    protected_prefixes = ("/ui", "/api", "/ws", "/docs", "/openapi.json", "/redoc")
-    return path == "/" or path.startswith(protected_prefixes)
+# -----------------------------------------------------------------------------
+# Init
+# -----------------------------------------------------------------------------
+app = FastAPI(title="Frigate Hot-Reload Prototype", version="0.2.3")
+BASE_DIR = Path(__file__).parent
+DATA_DIR = BASE_DIR.parent / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-app = FastAPI(title="Frigate Hot-Reload API")
+manager = ConfigManager(DATA_DIR)  # твоята имплементация
 
-# ---- HTTP Basic middleware за всички HTTP заявки ----
-@app.middleware("http")
-async def basic_auth_mw(request, call_next):
-    path = request.url.path
-    if _need_auth(path) and path != "/test":
-        auth = request.headers.get("authorization", "")
-        if not _check_basic(auth):
-            return Response(
-                status_code=401,
-                headers={"WWW-Authenticate": 'Basic realm="frigate-ui"'},
-                content=b"Unauthorized",
-                media_type="text/plain",
-            )
-    return await call_next(request)
+# -----------------------------------------------------------------------------
+# Compatibility adapters
+# -----------------------------------------------------------------------------
+def _fallback_default_config() -> Dict[str, Any]:
+    return {
+        "mqtt": {"host": "mqtt", "port": 1883, "user": None, "password": None, "topic_prefix": "frigate"},
+        "cameras": {
+            "cam1": {
+                "name": "Front Yard",
+                "enabled": True,
+                "ffmpeg": {"url": "rtsp://example/stream1", "hwaccel": None, "width": 1920, "height": 1080, "fps": 15},
+                "zones": [{"name": "door", "points": [[0, 0], [100, 0], [100, 100], [0, 100]]}],
+                "detection": {"score_threshold": 0.6, "iou_threshold": 0.45},
+                "retention": {"mode": "motion", "detection_days": 5, "recording_days": 2, "pre_capture_sec": 3, "post_capture_sec": 3},
+            }
+        },
+    }
 
-# ---- Health ----
-@app.get("/test")
-def test():
-    return {"status": "OK"}
+def _read_config_from_disk() -> Dict[str, Any]:
+    path = DATA_DIR / "config.json"
+    if path.exists():
+        try:
+            return json.loads(path.read_text())
+        except Exception:
+            pass
+    return _fallback_default_config()
 
-# ---- Зареждане на конфигурация (от файл, ако съществува) ----
-loaded = load_config()
-if loaded:
-    initial = RootConfig.model_validate(loaded)
-else:
-    initial = RootConfig(
-        cameras={
-            "cam1": CameraConfig(
-                name="Front Yard",
-                ffmpeg=FFmpegInput(url="rtsp://example/stream1", width=1920, height=1080, fps=15),
-                zones=[Zone(name="door", points=[[0, 0], [100, 0], [100, 100], [0, 100]])],
-            )
-        }
-    )
+if not hasattr(manager, "get_running_config"):
+    def _mgr_get_running() -> Dict[str, Any]:
+        candidates = ["get_current", "current", "get_running", "load_running", "read_running", "read", "load", "get"]
+        for name in candidates:
+            fn = getattr(manager, name, None)
+            if callable(fn):
+                try:
+                    res = fn()
+                    if isinstance(res, dict):
+                        return res
+                except TypeError:
+                    try:
+                        res = fn(DATA_DIR)
+                        if isinstance(res, dict):
+                            return res
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+        return _read_config_from_disk()
+    manager.get_running_config = _mgr_get_running  # type: ignore
 
-cfg = ConfigManager(initial)
-workers: Dict[str, CameraWorker] = {n: CameraWorker(c) for n, c in cfg.running.cameras.items()}
-for w in workers.values():
-    w.start()
+# apply_config адаптер – винаги подава ПРАВИЛНИЯ payload (модел или attr-обект)
+import inspect
+if not hasattr(manager, "apply_config"):
+    if hasattr(manager, "apply") and callable(getattr(manager, "apply")):
+        sig = inspect.signature(manager.apply)
+        if "workers" in sig.parameters:
+            def _apply_cfg(cfg: dict):
+                payload = _as_model_or_attr(cfg)
+                return manager.apply(payload, workers={})
+        else:
+            def _apply_cfg(cfg: dict):
+                payload = _as_model_or_attr(cfg)
+                return manager.apply(payload)
+        manager.apply_config = _apply_cfg  # type: ignore
+    elif hasattr(manager, "set_config") and callable(getattr(manager, "set_config")):
+        def _apply_cfg(cfg: dict):
+            payload = _as_model_or_attr(cfg)
+            return manager.set_config(payload)  # type: ignore
+        manager.apply_config = _apply_cfg  # type: ignore
+    else:
+        def _apply_fallback(cfg: dict) -> dict:
+            path = DATA_DIR / "config.json"
+            path.write_text(json.dumps(cfg, indent=2))
+            return {"saved_to": str(path)}
+        manager.apply_config = _apply_fallback  # type: ignore
+
+if not hasattr(manager, "diff_configs"):
+    def _diff_fallback(a: dict, b: dict) -> dict:
+        return {"before": a, "after": b}
+    manager.diff_configs = _diff_fallback  # type: ignore
+
+# -----------------------------------------------------------------------------
+# WS Bus
+# -----------------------------------------------------------------------------
+class WSBus:
+    def __init__(self) -> None:
+        self._clients: set[WebSocket] = set()
+
+    async def connect(self, ws: WebSocket) -> None:
+        await ws.accept()
+        self._clients.add(ws)
+
+    def disconnect(self, ws: WebSocket) -> None:
+        self._clients.discard(ws)
+
+    async def broadcast(self, message: dict | str) -> None:
+        payload = json.dumps(message) if not isinstance(message, str) else message
+        dead: List[WebSocket] = []
+        for ws in list(self._clients):
+            try:
+                await ws.send_text(payload)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(ws)
 
 bus = WSBus()
 
-# ---- API: четене/валидация/прилагане ----
+# -----------------------------------------------------------------------------
+# Centralized apply with rich error reporting
+# -----------------------------------------------------------------------------
+logger = logging.getLogger("hotreload")
+logging.basicConfig(level=logging.INFO)
+
+def _candidate_payloads(raw_cfg: dict) -> list[Any]:
+    """Върни варианти: dict, Pydantic модел (ако има), attr-обект."""
+    variants: list[Any] = [raw_cfg]
+    model = None
+    if ConfigModel is not None:
+        try:
+            model = ConfigModel(**raw_cfg)
+            variants.append(model)
+        except Exception:
+            pass
+    variants.append(_to_attr(raw_cfg))
+    return variants
+
+def _apply_config_safe(new_cfg: dict):
+    """Пробвай различни сигнатури и payload типове (dict / модел / attr-обект)."""
+    tried: list[str] = []
+    payloads = _candidate_payloads(new_cfg)
+
+    for fn_name in ("apply_config", "apply"):
+        fn = getattr(manager, fn_name, None)
+        if not callable(fn):
+            continue
+        for payload in payloads:
+            try:
+                return fn(payload)
+            except Exception as e:
+                tried.append(f"{fn_name}({type(payload).__name__}) -> {e}")
+            try:
+                return fn(payload, workers={})
+            except Exception as e2:
+                tried.append(f"{fn_name}({type(payload).__name__}, workers={{}}) -> {e2}")
+
+    # Last resort
+    path = DATA_DIR / "config.json"
+    path.write_text(json.dumps(new_cfg, indent=2))
+    return {"saved_to": str(path), "note": "fallback_apply", "tried": tried}
+
+async def _ws_event(event: str, **payload):
+    try:
+        await bus.broadcast({"event": event, **payload})
+    except Exception:
+        logger.debug("WS broadcast failed", exc_info=True)
+
+def _apply_with_errors(new_cfg: dict, ws_event: str | None = None, ws_payload: dict | None = None):
+    try:
+        result = _apply_config_safe(new_cfg)
+        if ws_event:
+            try:
+                loop = asyncio.get_event_loop()
+                loop.create_task(_ws_event(ws_event, **(ws_payload or {})))
+            except RuntimeError:
+                pass
+        return JSONResponse({"ok": True, "applied": True, "result": result})
+    except Exception as e:
+        err = {"error": str(e), "type": e.__class__.__name__, "trace": traceback.format_exc()}
+        logger.error("apply failed: %s", err["error"])
+        return JSONResponse({"ok": False, "applied": False, "error": err}, status_code=500)
+
+# -----------------------------------------------------------------------------
+# Models (request bodies)
+# -----------------------------------------------------------------------------
+class CameraCloneReq(BaseModel):
+    source_key: str
+    target_key: str
+    overwrite: bool = False
+    apply: bool = True
+
+class CameraDeleteReq(BaseModel):
+    key: str
+    apply: bool = True
+
+class CameraReorderReq(BaseModel):
+    order: List[str]
+    apply: bool = True
+
+# -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
+def _deepcopy(obj: Any) -> Any:
+    return json.loads(json.dumps(obj))
+
+def _ensure_cameras(cfg: dict) -> dict:
+    cfg.setdefault("cameras", {})
+    return cfg
+
+def _ok(**kw) -> JSONResponse:
+    return JSONResponse({"ok": True, **kw})
+
+# -----------------------------------------------------------------------------
+# Routes: basic + static
+# -----------------------------------------------------------------------------
+@app.get("/test")
+def test() -> dict:
+    return {"status": "OK"}
+
+app.mount("/ui", StaticFiles(directory=BASE_DIR / "static", html=True), name="ui")
+
+# -----------------------------------------------------------------------------
+# Routes: config
+# -----------------------------------------------------------------------------
 @app.get("/api/config")
-def get_config():
-    return cfg.running.model_dump()
+def get_config() -> dict:
+    return manager.get_running_config()
 
 @app.post("/api/config/validate")
-def validate_config(data: Dict[str, Any]):
-    ok, msg = cfg.validate(data)
-    return JSONResponse({"ok": ok, "message": msg}, status_code=(200 if ok else 400))
+def validate_config(cfg: dict) -> dict:
+    try:
+        json.dumps(cfg)
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/config/apply")
-async def apply_config(data: Dict[str, Any], dry: bool = False):
-    # Валидиране
-    ok, msg = cfg.validate(data)
-    if not ok:
-        return JSONResponse({"ok": False, "message": msg}, status_code=400)
-
-    # Подготовка на нов конфиг и diff
-    new = RootConfig.model_validate(data)
-    diff = cfg.diff(new)
-
-    # Preview само праща diff
+def apply_config(cfg: dict, dry: bool = Query(False, description="Preview only")) -> JSONResponse:
+    current = manager.get_running_config()
+    new_cfg = _deepcopy(cfg)
     if dry:
-        await bus.broadcast({"event": "preview", "diff": diff})
-        return {"ok": True, "dry": True, "diff": diff}
+        diff = manager.diff_configs(current, new_cfg)
+        return _ok(dry=True, diff=diff)
+    return _apply_with_errors(
+        new_cfg,
+        ws_event="applied",
+        ws_payload={"ts": (asyncio.get_event_loop().time() if asyncio.get_event_loop().is_running() else None)},
+    )
 
-    # --- Бекъп на текущия ПРЕДИ прилагане ---
-    prev_snapshot = cfg.running.model_dump()
-    snap_name = create_backup(prev_snapshot)
-
-    # Apply: оповестяване, прилагане, запис, финално оповестяване
-    await bus.broadcast({"event": "apply_start", "diff": diff, "backup": snap_name})
-    changes = cfg.apply(new, workers)
-    save_config(cfg.running.model_dump())  # запис на новия активен (без нов бекъп)
-    await bus.broadcast({"event": "apply_done", "applied": changes})
-    return {"ok": True, "dry": False, "applied": changes, "backup": snap_name}
-
-# ---- Backups / Rollback ----
 @app.get("/api/config/backups")
-def get_backups():
-    """Списък с налични бекъпи (по име на файл)."""
-    return {"backups": list_backups()}
+def list_backups() -> dict:
+    if hasattr(manager, "list_backups"):
+        files = manager.list_backups()  # type: ignore
+    else:
+        bdir = DATA_DIR / "backups"
+        files = sorted([p.name for p in bdir.glob("*.json")]) if bdir.exists() else []
+    return {"backups": files}
 
 @app.post("/api/config/rollback")
-async def rollback(name: str | None = None):
-    """
-    Връща конфигурацията към посочен бекъп или към най-новия.
-    Понеже бекапите се правят ПРЕДИ apply, 'latest' е предишното състояние.
-    """
-    backups = list_backups()
-    if not backups:
-        return JSONResponse({"ok": False, "message": "no backups available"}, status_code=404)
+def rollback(name: Optional[str] = Query(None)) -> JSONResponse:
+    if hasattr(manager, "rollback"):
+        ok = manager.rollback(name)  # type: ignore
+    else:
+        raise HTTPException(status_code=501, detail="rollback not implemented in manager")
+    if ok:
+        return _ok(rolled_back=True, name=name or "latest")
+    raise HTTPException(status_code=400, detail="rollback failed")
 
-    target_name = name if name else backups[-1]  # последният е най-новият бекъп (предишно състояние)
-    data = load_backup(target_name)
-    if data is None:
-        return JSONResponse({"ok": False, "message": f"backup '{target_name}' not found or unreadable"}, status_code=404)
-
-    # Валидиране и прилагане на бекъпа
-    try:
-        new = RootConfig.model_validate(data)
-    except Exception as e:
-        return JSONResponse({"ok": False, "message": f"invalid backup data: {e}"}, status_code=400)
-
-    diff = cfg.diff(new)
-    await bus.broadcast({"event": "rollback_start", "target": target_name, "diff": diff})
-
-    # (по избор) бекъпни текущото преди да върнеш назад:
-    create_backup(cfg.running.model_dump())
-
-    changes = cfg.apply(new, workers)
-    save_config(cfg.running.model_dump())  # запис на върнатото състояние (без нов бекъп)
-    await bus.broadcast({"event": "rollback_done", "target": target_name, "applied": changes})
-    return {"ok": True, "target": target_name, "applied": changes}
-
-# ---- Reset to disk ----
 @app.post("/api/config/reset")
-async def reset_to_disk():
-    """
-    Взема конфигурацията директно от data/config.json и я прави 'running'.
-    Бекапваме текущото състояние ПРЕДИ reset, за да може да се върнеш с Rollback latest.
-    """
-    data = load_config()
-    if not data:
-        return JSONResponse({"ok": False, "message": "no config.json on disk"}, status_code=404)
+def reset_to_disk() -> JSONResponse:
+    if hasattr(manager, "reset_to_disk"):
+        ok = manager.reset_to_disk()  # type: ignore
+    else:
+        raise HTTPException(status_code=501, detail="reset not implemented in manager")
+    if ok:
+        return _ok(reset=True)
+    raise HTTPException(status_code=400, detail="reset failed")
 
-    # Валидиране
-    try:
-        new = RootConfig.model_validate(data)
-    except Exception as e:
-        return JSONResponse({"ok": False, "message": f"invalid on-disk config: {e}"}, status_code=400)
-
-    # Бекъп на текущото преди reset
-    snap_name = create_backup(cfg.running.model_dump())
-
-    diff = cfg.diff(new)
-    await bus.broadcast({"event": "reset_start", "backup": snap_name, "diff": diff})
-    changes = cfg.apply(new, workers)
-    save_config(cfg.running.model_dump())  # синхронизира активния към диска
-    await bus.broadcast({"event": "reset_done", "applied": changes})
-    return {"ok": True, "applied": changes, "backup": snap_name}
-
-# ---- Export / Import ----
 @app.get("/api/config/export")
-def export_config():
-    """Сваля текущия 'running' конфиг като файл."""
-    payload = cfg.running.model_dump()
-    content = JSONResponse(content=payload).body
-    headers = {"Content-Disposition": 'attachment; filename="config.json"'}
-    return Response(content=content, media_type="application/json", headers=headers)
+def export_cfg() -> FileResponse:
+    path = DATA_DIR / "config.json"
+    if not path.exists():
+        current = manager.get_running_config()
+        path.write_text(json.dumps(current, indent=2))
+    return FileResponse(path, media_type="application/json", filename="config.json")
 
 @app.post("/api/config/import")
-async def import_config(data: Dict[str, Any]):
-    """
-    Импорт на конфигурация от JSON тяло.
-    Бекапваме текущото преди импорт, прилагаме, записваме на диск.
-    """
-    # Валидиране
-    try:
-        new = RootConfig.model_validate(data)
-    except Exception as e:
-        return JSONResponse({"ok": False, "message": f"invalid import data: {e}"}, status_code=400)
+def import_cfg(cfg: dict) -> JSONResponse:
+    result = manager.apply_config(_deepcopy(cfg))
+    return _ok(imported=True, result=result)
 
-    # Бекъп преди импорт
-    snap_name = create_backup(cfg.running.model_dump())
+# -----------------------------------------------------------------------------
+# NEW: Camera management API
+# -----------------------------------------------------------------------------
+@app.post("/api/cameras/clone")
+def api_cam_clone(req: CameraCloneReq) -> JSONResponse:
+    cfg = manager.get_running_config()
+    cams = _ensure_cameras(cfg)["cameras"]
 
-    diff = cfg.diff(new)
-    await bus.broadcast({"event": "import_start", "backup": snap_name, "diff": diff})
-    changes = cfg.apply(new, workers)
-    save_config(cfg.running.model_dump())
-    await bus.broadcast({"event": "import_done", "applied": changes})
-    return {"ok": True, "applied": changes, "backup": snap_name}
+    if req.source_key not in cams:
+        raise HTTPException(status_code=404, detail=f"source_key '{req.source_key}' not found")
+    if (req.target_key in cams) and not req.overwrite:
+        raise HTTPException(status_code=409, detail=f"target_key '{req.target_key}' exists (use overwrite=true)")
 
-# ---- WebSocket с Basic Auth проверка ----
+    new_cfg = _deepcopy(cfg)
+    new_cams = _ensure_cameras(new_cfg)["cameras"]
+    new_cams[req.target_key] = _deepcopy(new_cams[req.source_key])
+    if not new_cams[req.target_key].get("name"):
+        new_cams[req.target_key]["name"] = req.target_key
+
+    if not req.apply:
+        diff = manager.diff_configs(cfg, new_cfg)
+        return _ok(dry=True, diff=diff)
+
+    return _apply_with_errors(
+        new_cfg,
+        ws_event="cam_cloned",
+        ws_payload={"from": req.source_key, "to": req.target_key},
+    )
+
+@app.post("/api/cameras/delete")
+def api_cam_delete(req: CameraDeleteReq) -> JSONResponse:
+    cfg = manager.get_running_config()
+    cams = cfg.get("cameras", {})
+    if req.key not in cams:
+        raise HTTPException(status_code=404, detail=f"key '{req.key}' not found")
+
+    new_cfg = _deepcopy(cfg)
+    new_cfg.get("cameras", {}).pop(req.key, None)
+
+    if not req.apply:
+        diff = manager.diff_configs(cfg, new_cfg)
+        return _ok(dry=True, diff=diff)
+
+    return _apply_with_errors(
+        new_cfg,
+        ws_event="cam_deleted",
+        ws_payload={"key": req.key},
+    )
+
+@app.post("/api/cameras/reorder")
+def api_cam_reorder(req: CameraReorderReq) -> JSONResponse:
+    cfg = manager.get_running_config()
+    cams = cfg.get("cameras", {})
+    if not cams:
+        raise HTTPException(status_code=400, detail="no cameras to reorder")
+
+    ordered_keys = [k for k in req.order if k in cams]
+    for k in cams.keys():
+        if k not in ordered_keys:
+            ordered_keys.append(k)
+
+    new_cfg = _deepcopy(cfg)
+    new_cfg["cameras"] = {k: cams[k] for k in ordered_keys}
+
+    if not req.apply:
+        diff = manager.diff_configs(cfg, new_cfg)
+        return _ok(dry=True, diff=diff, order=ordered_keys)
+
+    resp = _apply_with_errors(
+        new_cfg,
+        ws_event="cam_reordered",
+        ws_payload={"order": ordered_keys},
+    )
+    if resp.status_code == 200:
+        data = json.loads(resp.body.decode())
+        data["order"] = ordered_keys
+        return JSONResponse(data)
+    return resp
+
+# -----------------------------------------------------------------------------
+# WebSocket
+# -----------------------------------------------------------------------------
 @app.websocket("/ws")
 async def ws(ws: WebSocket):
-    # проверка на Basic от headers (или токен в query ?auth=)
-    auth = ws.headers.get("authorization") or ""
-    if not _check_basic(auth):
-        # fallback: ?auth=base64(user:pass)
-        token = ws.query_params.get("auth")
-        if not token:
-            await ws.close(code=1008, reason="Unauthorized")
-            return
-        try:
-            pair = base64.b64decode(token).decode("utf-8")
-            if ":" not in pair:
-                await ws.close(code=1008, reason="Unauthorized")
-                return
-            u, p = pair.split(":", 1)
-            if not (secrets.compare_digest(u, ADMIN_USER) and secrets.compare_digest(p, ADMIN_PASS)):
-                await ws.close(code=1008, reason="Unauthorized")
-                return
-        except Exception:
-            await ws.close(code=1008, reason="Unauthorized")
-            return
-
-    await bus.register(ws)
+    await bus.connect(ws)
     try:
         while True:
-            await ws.receive_text()  # keep-alive
+            _ = await ws.receive_text()  # ping/pong
     except WebSocketDisconnect:
-        pass
-    finally:
-        await bus.unregister(ws)
-
-# ---- UI на /ui (НЕ на /) ----
-app.mount("/ui", StaticFiles(directory="app/static", html=True), name="static")
+        bus.disconnect(ws)
