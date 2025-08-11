@@ -1,0 +1,31 @@
+{
+  "name": "frigate-hotreload-docs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Documentation site for the Frigate Hotreload project built with Docusaurus.",
+  "scripts": {
+    "start": "docusaurus start",
+    "build": "docusaurus build",
+    "serve": "docusaurus serve",
+    "deploy": "docusaurus deploy"
+  },
+  "dependencies": {
+    "@docusaurus/core": "^3.3.0",
+    "@docusaurus/preset-classic": "^3.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  },
+  "browserslist": {
+    "production": [
+      ">0.5%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
