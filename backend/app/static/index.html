@@ -10,7 +10,7 @@
   button.primary { background:#1d4ed8; color:#fff; border-color:#1d4ed8; }
   button.danger { background:#dc2626; color:#fff; border-color:#dc2626; }
   button.ghost { background:#fff; }
-  .layout { display:grid; grid-template-columns: 340px 1fr; height: calc(100vh - 48px); }
+  .layout { display:grid; grid-template-columns: 380px 1fr; height: calc(100vh - 48px); }
   .sidebar { border-right:1px solid #e2e8f0; padding:10px; overflow:auto; background:#fff; }
   .main { padding:12px; overflow:auto; }
   .card { border:1px solid #e2e8f0; border-radius:12px; padding:12px; margin-bottom:12px; background:#fff; box-shadow:0 1px 0 rgba(0,0,0,.02); }
@@ -34,11 +34,23 @@
   .drop-marker { height: 0; border-top: 2px solid #1d4ed8; margin: 4px 0; }
   .banner { position:fixed; left:50%; transform:translateX(-50%); bottom:16px; background:#0f172a; color:#fff; padding:10px 14px; border-radius:10px; display:flex; align-items:center; gap:10px; box-shadow:0 10px 30px rgba(0,0,0,.15); }
   .banner .timer { font-variant-numeric: tabular-nums; }
+  details summary { cursor:pointer; }
+  .pill { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; border-radius:999px; font-size:12px; border:1px solid #cbd5e1; background:#fff; }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+  .dot.ok { background:#16a34a; }
+  .dot.warn { background:#f59e0b; }
+  .dot.err { background:#dc2626; }
 </style>
 
 <header>
   <h1>Frigate Hot-Reload</h1>
   <div class="actions">
+    <span id="authPill" class="pill"><span class="dot warn"></span><span>Auth: unknown</span></span>
+    <input id="apiToken" type="password" placeholder="API token (optional)" style="border-radius:8px; border:1px solid #cbd5e1; padding:6px 8px;" />
+    <button id="genToken" class="ghost">Generate token</button>
+    <button id="ensureAccess" class="ghost">Ensure access</button>
+    <button id="copyToken" class="ghost">Copy token</button>
+    <button id="disableAuth" class="ghost">Disable auth</button>
     <button id="refresh">Refresh</button>
     <button id="export">Export</button>
     <button id="importBtn">Import</button>
@@ -53,6 +65,12 @@
         <span class="muted" id="camCount">0</span>
       </div>
       <div id="camList"></div>
+      <div class="row" style="margin-top:6px;">
+        <div class="span4" style="display:flex; gap:8px; align-items:center;">
+          <label class="muted"><input id="selAll" type="checkbox" /> Select all</label>
+          <button id="bulkDelete" class="danger">Delete selected</button>
+        </div>
+      </div>
       <div class="row" style="margin-top:8px;">
         <div class="span2">
           <label class="muted">Source key</label>
@@ -68,6 +86,54 @@
         </div>
       </div>
       <div class="hint">Tip: влачи и пускай камерите, за да пренареждаш. Промените се прилагат веднага.</div>
+    </div>
+
+    <!-- Add Camera with Presets -->
+    <div class="card">
+      <strong>Add camera (presets)</strong>
+      <div class="row" style="margin-top:8px;">
+        <div class="span2">
+          <label class="muted">New key</label>
+          <input id="addKey" type="text" placeholder="cam5" />
+        </div>
+        <div class="span2">
+          <label class="muted">Preset</label>
+          <select id="presetSelect"></select>
+        </div>
+        <div class="span4">
+          <label class="muted">Name</label>
+          <input id="addName" type="text" placeholder="Front Door" />
+        </div>
+        <div class="span4">
+          <label class="muted">RTSP / ONVIF URL</label>
+          <input id="addUrl" type="text" placeholder="rtsp://user:pass@host:554/stream" />
+        </div>
+        <div>
+          <label class="muted">Width</label>
+          <input id="addW" type="number" value="1920" />
+        </div>
+        <div>
+          <label class="muted">Height</label>
+          <input id="addH" type="number" value="1080" />
+        </div>
+        <div>
+          <label class="muted">FPS</label>
+          <input id="addFps" type="number" value="15" />
+        </div>
+        <div>
+          <label class="muted">Enabled</label>
+          <select id="addEnabled"><option value="true" selected>true</option><option value="false">false</option></select>
+        </div>
+        <div class="span4" style="display:flex; gap:8px;">
+          <button id="addApply" class="primary">Add Apply</button>
+          <button id="savePreset" class="ghost">Save as preset…</button>
+        </div>
+      </div>
+      <details style="margin-top:6px;">
+        <summary>Advanced JSON (override)</summary>
+        <textarea id="addJson" placeholder="{ \"ffmpeg\": { ... }, \"detection\": { ... } }"></textarea>
+        <div class="hint">Ако е попълнено, това JSON ще бъде мерджнато върху избрания preset.</div>
+      </details>
     </div>
   </aside>
 
@@ -100,21 +166,135 @@
 <script>
 const $ = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+function getToken(){ try { return localStorage.getItem('api_token') || ''; } catch { return ''; } }
+function authHeaders(base={}){ const t = getToken(); return t ? { ...base, 'Authorization': 'Bearer ' + t } : base; }
 const log = (m) => { const el = $('#log'); el.textContent += (typeof m==='string'?m:JSON.stringify(m)) + '\n'; el.scrollTop = el.scrollHeight; };
 
-let state = { cfg: {}, selected: null };
-let undo = { key: null, value: null, t: null, left: 0, timerId: null };
+let state = { cfg: {}, selected: null, sel: {} };
+let undo = { key: null, value: null, index: null, t: null, left: 0, timerId: null };
+
+// ---- Presets ----
+const BUILTIN_PRESETS = {
+  generic_rtsp: {
+    label: 'Generic RTSP',
+    cam: {
+      name: '', enabled: true,
+      ffmpeg: { url: 'rtsp://user:pass@host:554/stream', hwaccel: null, width: 1920, height: 1080, fps: 15 },
+      zones: [],
+      detection: { score_threshold: 0.6, iou_threshold: 0.45 },
+      retention: { mode: 'motion', detection_days: 5, recording_days: 2, pre_capture_sec: 3, post_capture_sec: 3 }
+    }
+  },
+  onvif: {
+    label: 'ONVIF',
+    cam: {
+      name: '', enabled: true,
+      ffmpeg: { url: 'rtsp://user:pass@host:554/Streaming/Channels/101', hwaccel: null, width: 1920, height: 1080, fps: 15 },
+      onvif: { host: 'http://host:8000', user: 'user', pass: 'pass' },
+      zones: [],
+      detection: { score_threshold: 0.6, iou_threshold: 0.45 },
+      retention: { mode: 'motion', detection_days: 5, recording_days: 2, pre_capture_sec: 3, post_capture_sec: 3 }
+    }
+  },
+  hikvision: {
+    label: 'Hikvision',
+    cam: {
+      name: '', enabled: true,
+      ffmpeg: { url: 'rtsp://user:pass@host:554/Streaming/Channels/101', hwaccel: null, width: 2560, height: 1440, fps: 20 },
+      zones: [],
+      detection: { score_threshold: 0.6, iou_threshold: 0.45 },
+      retention: { mode: 'motion', detection_days: 7, recording_days: 3, pre_capture_sec: 3, post_capture_sec: 3 }
+    }
+  }
+};
+
+function loadCustomPresets(){
+  try { return JSON.parse(localStorage.getItem('custom_presets')||'{}'); } catch { return {}; }
+}
+function saveCustomPresets(obj){ localStorage.setItem('custom_presets', JSON.stringify(obj)); }
+
+function presetsSelectOptions(){
+  const sel = $('#presetSelect');
+  sel.innerHTML = '';
+  const opts = [];
+  const addOpt = (value, label) => { const o = document.createElement('option'); o.value=value; o.textContent=label; sel.appendChild(o); };
+  addOpt('generic_rtsp', 'Generic RTSP');
+  addOpt('onvif', 'ONVIF');
+  addOpt('hikvision', 'Hikvision');
+  const custom = loadCustomPresets();
+  Object.keys(custom).forEach(k => addOpt('custom:'+k, `★ ${k}`));
+  sel.value = 'generic_rtsp';
+}
+
+function mergeDeep(a,b){
+  if(Array.isArray(a) || Array.isArray(b)) return b;
+  if(typeof a==='object' && typeof b==='object' && a && b){
+    const out = {...a};
+    for(const k of Object.keys(b)) out[k] = mergeDeep(a[k], b[k]);
+    return out;
+  }
+  return b===undefined ? a : b;
+}
 
 async function fetchJSON(url, opts={}){
-  const res = await fetch(url, { credentials:'same-origin', ...opts });
+  const headers = authHeaders(opts.headers || {});
+  const res = await fetch(url, { credentials:'same-origin', ...opts, headers });
   const txt = await res.text();
   try { return { ok: res.ok, status: res.status, data: JSON.parse(txt) }; }
   catch { return { ok: res.ok, status: res.status, data: txt }; }
 }
 
-function isValidKey(k){
-  return /^[A-Za-z0-9_-]+$/.test(k);
+async function refreshAuthUI(){
+  try{
+    const pill = document.getElementById('authPill');
+    const dot = pill?.querySelector('.dot');
+    const text = pill?.querySelector('span:last-child');
+    const st = await fetchJSON('/api/auth/status');
+    if(!pill || !st.ok) return;
+    if(st.data.enabled){
+      if(dot){ dot.classList.remove('ok','err','warn'); dot.classList.add('ok'); }
+      if(text) text.textContent = 'Auth: enabled';
+      const tok = getToken();
+      if(!tok){
+        if(dot){ dot.classList.remove('ok','err'); dot.classList.add('warn'); }
+        if(text) text.textContent = 'Auth: enabled (no token)';
+      }
+    } else {
+      if(dot){ dot.classList.remove('ok','err','warn'); dot.classList.add('warn'); }
+      if(text) text.textContent = 'Auth: disabled';
+    }
+  }catch(_){ /* ignore */ }
 }
+
+async function ensureAccess(){
+  try{
+    const st = await fetchJSON('/api/auth/status');
+    if(st.ok && st.data.enabled){
+      if(!getToken()){
+        const gen = await fetchJSON('/api/auth/generate', { method:'POST' });
+        if(gen.ok && gen.data.token){
+          try { localStorage.setItem('api_token', gen.data.token); } catch {}
+          const input = document.getElementById('apiToken'); if(input) input.value = gen.data.token;
+          log('Token generated automatically');
+        } else {
+          alert('Failed to generate token');
+        }
+      }
+    }
+    await refreshAuthUI();
+    const res = await fetchJSON('/api/ping');
+    if(!res.ok) alert('Access check failed');
+  }catch(e){ alert('Access check error'); }
+}
+
+async function copyToken(){
+  const t = getToken();
+  if(!t){ alert('No token in browser'); return; }
+  try{ await navigator.clipboard.writeText(t); alert('Token copied'); }
+  catch{ alert('Copy failed: ' + t); }
+}
+
+function isValidKey(k){ return /^[A-Za-z0-9_-]+$/.test(k); }
 function assertCloneInputs(){
   const src = $('#cloneSource').value.trim();
   const tgt = $('#cloneTarget').value.trim();
@@ -141,12 +321,19 @@ function renderCamList(){
 
     const left = document.createElement('div');
     left.className = 'left';
+    const sel = document.createElement('input');
+    sel.type = 'checkbox';
+    sel.className = 'cam-select';
+    sel.checked = !!state.sel && state.sel[k];
+    sel.onchange = () => { state.sel = state.sel || {}; state.sel[k] = sel.checked; };
     const drag = document.createElement('span');
     drag.className = 'drag-handle';
     drag.textContent = '⋮⋮';
     const name = document.createElement('strong');
     name.textContent = k + (cams[k]?.name ? `  (${cams[k].name})` : '');
-    left.appendChild(drag); left.appendChild(name);
+    left.appendChild(sel);
+    left.appendChild(drag);
+    left.appendChild(name);
 
     const actions = document.createElement('div');
     actions.className = 'inline-actions';
@@ -192,9 +379,7 @@ function showMarker(item, before){
   if(before) item.parentNode.insertBefore(m, item); else item.after(m);
   item._marker = m;
 }
-function hideMarker(item){
-  if(item && item._marker){ item._marker.remove(); item._marker = null; }
-}
+function hideMarker(item){ if(item && item._marker){ item._marker.remove(); item._marker = null; } }
 
 async function reorderByDrop(srcKey, dstKey, placeBefore){
   const order = Object.keys(state.cfg.cameras);
@@ -211,14 +396,15 @@ async function reorderByDrop(srcKey, dstKey, placeBefore){
 
 async function loadConfig(){
   const res = await fetchJSON('/api/config');
-  if(res.ok) {
-    state.cfg = res.data; $('#cfg').value = JSON.stringify(state.cfg, null, 2); renderCamList();
-  } else { log(res.data); }
+  if(res.ok) { state.cfg = res.data; $('#cfg').value = JSON.stringify(state.cfg, null, 2); renderCamList(); fillFromPreset(); }
+  else { log(res.data); }
 }
 
 async function softDelete(key){
   // буферирай изтритата камера и покажи Undo
   const cam = (state.cfg.cameras || {})[key];
+  const keys = Object.keys(state.cfg.cameras || {});
+  undo.index = keys.indexOf(key);
   if(!cam) return;
   undo.value = JSON.parse(JSON.stringify(cam));
   undo.key = key;
@@ -239,22 +425,54 @@ async function softDelete(key){
   }, 1000);
 }
 
+$('#selAll').onchange = () => {
+  const on = $('#selAll').checked;
+  state.sel = {};
+  Object.keys(state.cfg.cameras || {}).forEach(k => state.sel[k] = on);
+  renderCamList();
+};
+
+$('#bulkDelete').onclick = async () => {
+  const keys = Object.keys(state.sel || {}).filter(k => state.sel[k]);
+  if(!keys.length) return alert('No cameras selected');
+  if(!confirm(`Delete ${keys.length} selected camera(s)?`)) return;
+  const res = await fetchJSON('/api/cameras/bulk_delete', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ keys, apply: true })
+  });
+  log(res.data);
+  state.sel = {};
+  await loadConfig();
+};
+
 function hideUndo(){
   clearInterval(undo.timerId);
   undo.timerId = null;
   $('#undoBanner').style.display = 'none';
-  undo.key = null; undo.value = null; undo.left = 0;
+  undo.key = null; undo.value = null; undo.index = null; undo.left = 0;
 }
 
 $('#undoBtn').onclick = async ()=>{
   if(!undo.key || !undo.value) return hideUndo();
-  const res = await fetchJSON('/api/cameras/set', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
+  // 1) restore the camera definition
+  const setRes = await fetchJSON('/api/cameras/set', {
+    method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ key: undo.key, value: undo.value, apply: true })
   });
-  log(res.data);
-  if(!res.ok){ alert('Undo failed: ' + (res.data?.error?.error || res.status)); }
+  log(setRes.data);
+  if(!setRes.ok){ alert('Undo failed: ' + (setRes.data?.error?.error || setRes.status)); hideUndo(); return; }
+  // 2) restore original position (index)
+  try {
+    const cfgRes = await fetchJSON('/api/config');
+    if(cfgRes.ok){
+      const cams = cfgRes.data.cameras || {};
+      let order = Object.keys(cams).filter(k => k !== undo.key);
+      const idx = Math.max(0, Math.min((undo.index ?? order.length), order.length));
+      order.splice(idx, 0, undo.key);
+      const reRes = await fetchJSON('/api/cameras/reorder', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ order, apply: true }) });
+      log(reRes.data);
+    }
+  } catch(_) {}
   hideUndo();
   await loadConfig();
 };
@@ -315,5 +533,134 @@ $('#cloneApply').onclick = async ()=>{
   await loadConfig();
 };
 
-window.addEventListener('DOMContentLoaded', loadConfig);
+function fillFromPreset(){
+  const key = $('#presetSelect').value;
+  const name = $('#addName');
+  const url = $('#addUrl');
+  const w = $('#addW');
+  const h = $('#addH');
+  const fps = $('#addFps');
+  const en = $('#addEnabled');
+
+  const custom = loadCustomPresets();
+  let base;
+  if(key.startsWith('custom:')) base = custom[key.slice(7)]; else base = BUILTIN_PRESETS[key];
+  if(!base) return;
+  const cam = base.cam;
+  name.value = cam.name || '';
+  url.value = cam.ffmpeg?.url || '';
+  w.value = cam.ffmpeg?.width ?? 1920;
+  h.value = cam.ffmpeg?.height ?? 1080;
+  fps.value = cam.ffmpeg?.fps ?? 15;
+  en.value = (cam.enabled!==false) ? 'true' : 'false';
+}
+
+$('#presetSelect').onchange = fillFromPreset;
+
+$('#savePreset').onclick = ()=>{
+  const label = prompt('Preset name:');
+  if(!label) return;
+  const tpl = buildCameraFromForm();
+  const custom = loadCustomPresets();
+  custom[label] = { label, cam: tpl };
+  saveCustomPresets(custom);
+  presetsSelectOptions();
+  $('#presetSelect').value = 'custom:'+label;
+};
+
+function buildCameraFromForm(){
+  const cam = JSON.parse(JSON.stringify((BUILTIN_PRESETS[$('#presetSelect').value]?.cam) || BUILTIN_PRESETS['generic_rtsp'].cam));
+  cam.name = $('#addName').value.trim();
+  cam.enabled = ($('#addEnabled').value === 'true');
+  cam.ffmpeg = cam.ffmpeg || {};
+  cam.ffmpeg.url = $('#addUrl').value.trim();
+  cam.ffmpeg.width = parseInt($('#addW').value||'1920',10);
+  cam.ffmpeg.height = parseInt($('#addH').value||'1080',10);
+  cam.ffmpeg.fps = parseInt($('#addFps').value||'15',10);
+
+  // Advanced JSON override
+  const txt = $('#addJson').value.trim();
+  if(txt){
+    try{ const over = JSON.parse(txt); return mergeDeep(cam, over); }
+    catch(e){ alert('Invalid JSON in Advanced override'); }
+  }
+  return cam;
+}
+
+$('#addApply').onclick = async ()=>{
+  const key = $('#addKey').value.trim();
+  if(!key) return alert('Key is required');
+  if(!isValidKey(key)) return alert('Only letters, digits, _ and - are allowed');
+  const keys = Object.keys(state.cfg.cameras || {});
+  if(keys.includes(key) && !confirm(`Key '${key}' exists. Overwrite?`)) return;
+  const cam = buildCameraFromForm();
+  if(!cam?.ffmpeg?.url) return alert('URL is required');
+
+  const res = await fetchJSON('/api/cameras/set', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ key, value: cam, apply: true })
+  });
+  log(res.data);
+  await loadConfig();
+};
+
+</script>
+
+<script>
+// --- Auth helpers ---
+async function ensureToken(){
+  try{
+    const status = await fetchJSON('/api/auth/status');
+    const disabledFlag = (localStorage.getItem('auth_disabled') === '1');
+    if(status.ok && !status.data.enabled && !disabledFlag){
+      const gen = await fetchJSON('/api/auth/generate', { method:'POST' });
+      if(gen.ok && gen.data.token){
+        try { localStorage.setItem('api_token', gen.data.token); } catch {}
+        const input = $('#apiToken'); if(input) input.value = gen.data.token;
+        log('Token generated automatically');
+      }
+    }
+  }catch(e){ /* ignore */ }
+}
+
+async function generateToken(){
+  const gen = await fetchJSON('/api/auth/generate', { method:'POST' });
+  if(gen.ok && gen.data.token){
+    try { localStorage.setItem('api_token', gen.data.token); localStorage.removeItem('auth_disabled'); } catch {}
+    const input = $('#apiToken'); if(input) input.value = gen.data.token;
+    alert('New token generated and saved.');
+  }else{
+    alert('Failed to generate token: ' + JSON.stringify(gen.data));
+  }
+}
+
+async function disableAuth(){
+  const ok = confirm('Disable authentication? This opens all API endpoints.');
+  if(!ok) return;
+  const res = await fetchJSON('/api/auth/disable', { method:'POST' });
+  if(res.ok){
+    try { localStorage.removeItem('api_token'); localStorage.setItem('auth_disabled','1'); } catch {}
+    const input = $('#apiToken'); if(input) input.value = '';
+    alert('Authentication disabled.');
+  } else {
+    alert('Failed to disable: ' + JSON.stringify(res.data));
+  }
+}
+
+try { const t = localStorage.getItem('api_token'); if(t) $('#apiToken').value = t; } catch {}
+$('#apiToken').addEventListener('change', ()=>{ try { localStorage.setItem('api_token', $('#apiToken').value); } catch {} });
+
+$('#genToken').onclick = generateToken;
+$('#disableAuth').onclick = disableAuth;
+$('#ensureAccess').onclick = ensureAccess;
+$('#copyToken').onclick = copyToken;
+
+window.addEventListener('DOMContentLoaded', ()=>{
+  ensureToken();
+  refreshAuthUI();
+  presetsSelectOptions();
+  fillFromPreset();
+  loadConfig();
+});
+</script>
 </script>

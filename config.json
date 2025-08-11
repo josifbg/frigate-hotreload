@@ -1,0 +1,80 @@
+{
+  "mqtt": {
+    "host": "mqtt",
+    "port": 1883,
+    "user": null,
+    "password": null,
+    "topic_prefix": "frigate"
+  },
+  "cameras": {
+    "cam9": {
+      "name": "cam9",
+      "enabled": true,
+      "ffmpeg": {
+        "url": "rtsp://josifbg:cikicheri75@192.168.5.50:554/Streaming/Channels/101",
+        "hwaccel": null,
+        "width": 2560,
+        "height": 1440,
+        "fps": 20
+      },
+      "zones": [],
+      "detection": {
+        "score_threshold": 0.6,
+        "iou_threshold": 0.45
+      },
+      "retention": {
+        "mode": "motion",
+        "detection_days": 7,
+        "recording_days": 3,
+        "pre_capture_sec": 3,
+        "post_capture_sec": 3
+      }
+    },
+    "cam1": {
+      "name": "",
+      "enabled": true,
+      "ffmpeg": {
+        "url": "rtsp://josifbg:cikicheri75@192.168.5.50:554/Streaming/Channels/101",
+        "hwaccel": null,
+        "width": 2560,
+        "height": 1440,
+        "fps": 20
+      },
+      "zones": [],
+      "detection": {
+        "score_threshold": 0.6,
+        "iou_threshold": 0.45
+      },
+      "retention": {
+        "mode": "motion",
+        "detection_days": 7,
+        "recording_days": 3,
+        "pre_capture_sec": 3,
+        "post_capture_sec": 3
+      }
+    },
+    "cam4": {
+      "name": "cam4",
+      "enabled": true,
+      "ffmpeg": {
+        "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+        "hwaccel": null,
+        "width": 2560,
+        "height": 1440,
+        "fps": 20
+      },
+      "zones": [],
+      "detection": {
+        "score_threshold": 0.6,
+        "iou_threshold": 0.45
+      },
+      "retention": {
+        "mode": "motion",
+        "detection_days": 7,
+        "recording_days": 3,
+        "pre_capture_sec": 3,
+        "post_capture_sec": 3
+      }
+    }
+  }
+}

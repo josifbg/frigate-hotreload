@@ -7,6 +7,29 @@
     "topic_prefix": "frigate"
   },
   "cameras": {
+    "cam4": {
+      "name": "cam4",
+      "enabled": true,
+      "ffmpeg": {
+        "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+        "hwaccel": null,
+        "width": 2560,
+        "height": 1440,
+        "fps": 20
+      },
+      "zones": [],
+      "detection": {
+        "score_threshold": 0.6,
+        "iou_threshold": 0.45
+      },
+      "retention": {
+        "mode": "motion",
+        "detection_days": 7,
+        "recording_days": 3,
+        "pre_capture_sec": 3,
+        "post_capture_sec": 3
+      }
+    },
     "cam1": {
       "name": "cam1",
       "enabled": true,
@@ -87,29 +110,6 @@
         "mode": "motion",
         "detection_days": 5,
         "recording_days": 2,
-        "pre_capture_sec": 3,
-        "post_capture_sec": 3
-      }
-    },
-    "cam4": {
-      "name": "cam4",
-      "enabled": true,
-      "ffmpeg": {
-        "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
-        "hwaccel": null,
-        "width": 2560,
-        "height": 1440,
-        "fps": 20
-      },
-      "zones": [],
-      "detection": {
-        "score_threshold": 0.6,
-        "iou_threshold": 0.45
-      },
-      "retention": {
-        "mode": "motion",
-        "detection_days": 7,
-        "recording_days": 3,
         "pre_capture_sec": 3,
         "post_capture_sec": 3
       }

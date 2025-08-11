@@ -7,10 +7,15 @@ from pathlib import Path
 from typing import Optional, List, Any, Dict
 from types import SimpleNamespace
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import secrets
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+from starlette.requests import Request
+import secrets
 
 from .config_manager import ConfigManager
 
@@ -44,9 +49,51 @@ def _as_model_or_attr(raw_cfg: dict) -> Any:
 # Init
 # -----------------------------------------------------------------------------
 app = FastAPI(title="Frigate Hot-Reload Prototype", version="0.2.3")
+
+# -----------------------------------------------------------------------------
+# Global JSON error handlers (force JSON for unhandled exceptions and HTTPException)
+# -----------------------------------------------------------------------------
+from starlette.requests import Request
+from fastapi.exceptions import RequestValidationError
+from starlette.responses import PlainTextResponse
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    # Ensure JSON body for all HTTP errors
+    payload = {"ok": False, "error": {"error": exc.detail if isinstance(exc.detail, str) else exc.detail, "type": "HTTPException"}}
+    return JSONResponse(payload, status_code=exc.status_code)
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(request: Request, exc: RequestValidationError):
+    payload = {"ok": False, "error": {"error": "validation error", "type": "RequestValidationError", "detail": exc.errors()}}
+    return JSONResponse(payload, status_code=422)
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    # Last-resort catcher to avoid text/plain bodies
+    err = {"error": str(exc), "type": exc.__class__.__name__, "trace": traceback.format_exc()}
+    logger.error("Unhandled exception: %s", err["error"])  
+    return JSONResponse({"ok": False, "applied": False, "error": err}, status_code=500)
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# -----------------------------------------------------------------------------
+# Auth token helpers
+# -----------------------------------------------------------------------------
+TOKEN_FILE = DATA_DIR / "auth_token.txt"
+
+def _load_token() -> str | None:
+    try:
+        if TOKEN_FILE.exists():
+            t = TOKEN_FILE.read_text().strip()
+            return t or None
+    except Exception:
+        pass
+    return None
+
+def _save_token(token: str) -> None:
+    TOKEN_FILE.write_text(token)
 
 manager = ConfigManager(DATA_DIR)  # твоята имплементация
 
@@ -158,6 +205,34 @@ class WSBus:
 bus = WSBus()
 
 # -----------------------------------------------------------------------------
+# HTTP Middleware for Bearer token auth on mutating routes
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Auth endpoints
+# -----------------------------------------------------------------------------
+@app.get("/api/auth/status")
+def auth_status() -> dict:
+    t = _load_token()
+    return {"enabled": bool(t), "have_token": bool(t)}
+
+@app.post("/api/auth/generate")
+def auth_generate() -> dict:
+    # Generate and persist a new token (idempotent: always generates fresh one)
+    token = secrets.token_urlsafe(32)
+    _save_token(token)
+    return {"ok": True, "token": token}
+
+@app.post("/api/auth/disable")
+def auth_disable() -> dict:
+    try:
+        if TOKEN_FILE.exists():
+            TOKEN_FILE.unlink()
+        return {"ok": True, "disabled": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# -----------------------------------------------------------------------------
 # Centralized apply with rich error reporting
 # -----------------------------------------------------------------------------
 logger = logging.getLogger("hotreload")
@@ -230,8 +305,13 @@ class CameraCloneReq(BaseModel):
     overwrite: bool = False
     apply: bool = True
 
+
 class CameraDeleteReq(BaseModel):
     key: str
+    apply: bool = True
+
+class CameraBulkDeleteReq(BaseModel):
+    keys: List[str]
     apply: bool = True
 
 class CameraReorderReq(BaseModel):
@@ -263,7 +343,89 @@ def _ok(**kw) -> JSONResponse:
 def test() -> dict:
     return {"status": "OK"}
 
+# Root handler: redirect to UI
+@app.get("/")
+def root() -> RedirectResponse:
+    return RedirectResponse(url="/ui/")
+
+# Ping route for quick version checks
+@app.get("/api/ping")
+def ping() -> dict:
+    return {"pong": True, "version": app.version}
+
 app.mount("/ui", StaticFiles(directory=BASE_DIR / "static", html=True), name="ui")
+
+# -----------------------------------------------------------------------------
+# Validation helpers
+# -----------------------------------------------------------------------------
+from typing import Tuple
+
+def _is_bool(x: Any) -> bool:
+    return isinstance(x, bool)
+
+def _is_int(x: Any) -> bool:
+    return isinstance(x, int) and not isinstance(x, bool)
+
+
+def validate_config_full(cfg: dict) -> List[Dict[str, Any]]:
+    """Return a list of validation error objects. Empty list means OK.
+    This keeps it lightweight but catches common mistakes.
+    """
+    errors: List[Dict[str, Any]] = []
+    if not isinstance(cfg, dict):
+        return [{"path": [], "msg": "config must be an object"}]
+
+    # mqtt
+    mqtt = cfg.get("mqtt")
+    if not isinstance(mqtt, dict):
+        errors.append({"path": ["mqtt"], "msg": "mqtt must be an object"})
+    else:
+        host = mqtt.get("host")
+        port = mqtt.get("port")
+        if not isinstance(host, str) or not host:
+            errors.append({"path": ["mqtt", "host"], "msg": "host must be non-empty string"})
+        if not _is_int(port) or not (0 < port < 65536):
+            errors.append({"path": ["mqtt", "port"], "msg": "port must be integer in (0,65536)"})
+
+    # cameras
+    cams = cfg.get("cameras")
+    if cams is None:
+        errors.append({"path": ["cameras"], "msg": "cameras is required"})
+        return errors
+    if not isinstance(cams, dict):
+        errors.append({"path": ["cameras"], "msg": "cameras must be an object of key -> camera"})
+        return errors
+
+    for key, cam in cams.items():
+        if not isinstance(key, str) or not key:
+            errors.append({"path": ["cameras"], "msg": "camera key must be string"})
+            continue
+        if not isinstance(cam, dict):
+            errors.append({"path": ["cameras", key], "msg": "camera value must be an object"})
+            continue
+        # enabled (optional)
+        en = cam.get("enabled", True)
+        if not isinstance(en, bool):
+            errors.append({"path": ["cameras", key, "enabled"], "msg": "enabled must be boolean"})
+        # ffmpeg
+        ff = cam.get("ffmpeg", {})
+        if not isinstance(ff, dict):
+            errors.append({"path": ["cameras", key, "ffmpeg"], "msg": "ffmpeg must be an object"})
+        else:
+            url = ff.get("url")
+            if not isinstance(url, str) or not url:
+                errors.append({"path": ["cameras", key, "ffmpeg", "url"], "msg": "url must be non-empty string"})
+            w = ff.get("width")
+            h = ff.get("height")
+            fps = ff.get("fps")
+            if w is not None and not _is_int(w):
+                errors.append({"path": ["cameras", key, "ffmpeg", "width"], "msg": "width must be integer"})
+            if h is not None and not _is_int(h):
+                errors.append({"path": ["cameras", key, "ffmpeg", "height"], "msg": "height must be integer"})
+            if fps is not None and (not _is_int(fps) or not (1 <= fps <= 240)):
+                errors.append({"path": ["cameras", key, "ffmpeg", "fps"], "msg": "fps must be integer in [1,240]"})
+
+    return errors
 
 # -----------------------------------------------------------------------------
 # Routes: config
@@ -275,10 +437,13 @@ def get_config() -> dict:
 @app.post("/api/config/validate")
 def validate_config(cfg: dict) -> dict:
     try:
-        json.dumps(cfg)
-        return {"ok": True}
+        json.dumps(cfg)  # structural JSON check
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+    errs = validate_config_full(cfg)
+    if errs:
+        raise HTTPException(status_code=400, detail={"errors": errs})
+    return {"ok": True}
 
 @app.post("/api/config/apply")
 def apply_config(cfg: dict, dry: bool = Query(False, description="Preview only")) -> JSONResponse:
@@ -332,8 +497,31 @@ def export_cfg() -> FileResponse:
 
 @app.post("/api/config/import")
 def import_cfg(cfg: dict) -> JSONResponse:
-    result = manager.apply_config(_deepcopy(cfg))
-    return _ok(imported=True, result=result)
+    """Import and apply a full config payload with robust error reporting."""
+    try:
+        # 1) structural JSON check
+        try:
+            json.dumps(cfg)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        # 2) domain validation
+        errs = validate_config_full(cfg)
+        if errs:
+            raise HTTPException(status_code=400, detail={"errors": errs})
+
+        # 3) deepcopy and apply via centralized path
+        new_cfg = _deepcopy(cfg)
+        return _apply_with_errors(new_cfg, ws_event="imported")
+
+    except HTTPException:
+        # Let FastAPI handle 4xx as-is
+        raise
+    except Exception as e:
+        # Force JSON body for 5xx and log details
+        err = {"error": str(e), "type": e.__class__.__name__, "trace": traceback.format_exc()}
+        logger.error("/api/config/import failed: %s", err["error"]) 
+        return JSONResponse({"ok": False, "applied": False, "error": err}, status_code=500)
 
 # -----------------------------------------------------------------------------
 # NEW: Camera management API
@@ -382,6 +570,35 @@ def api_cam_delete(req: CameraDeleteReq) -> JSONResponse:
         new_cfg,
         ws_event="cam_deleted",
         ws_payload={"key": req.key},
+    )
+
+
+@app.post("/api/cameras/bulk_delete")
+def api_cam_bulk_delete(req: CameraBulkDeleteReq) -> JSONResponse:
+    cfg = manager.get_running_config()
+    cams = cfg.get("cameras", {})
+    req_keys = list(dict.fromkeys(req.keys))  # unique preserve order
+    existing = [k for k in req_keys if k in cams]
+    missing = [k for k in req_keys if k not in cams]
+
+    # Build the prospective new config by removing only existing keys
+    new_cfg = _deepcopy(cfg)
+    for k in existing:
+        new_cfg.get("cameras", {}).pop(k, None)
+
+    if not req.apply:
+        # DRY-RUN: do not error if some are missing; report what would happen
+        diff = manager.diff_configs(cfg, new_cfg)
+        return _ok(dry=True, diff=diff, to_delete=existing, missing=missing)
+
+    # APPLY mode: if any are missing, keep strict behavior
+    if missing:
+        raise HTTPException(status_code=404, detail={"missing": missing})
+
+    return _apply_with_errors(
+        new_cfg,
+        ws_event="cams_deleted",
+        ws_payload={"keys": existing},
     )
 
 @app.post("/api/cameras/reorder")
@@ -435,6 +652,62 @@ def api_cam_set(req: CameraSetReq) -> JSONResponse:
         ws_event="cam_set",
         ws_payload={"key": req.key},
     )
+
+
+# -----------------------------------------------------------------------------
+# Auth helpers (token file, load/save)
+# -----------------------------------------------------------------------------
+TOKEN_FILE = DATA_DIR / "auth_token.txt"
+def _load_token():
+    try:
+        if TOKEN_FILE.exists():
+            return TOKEN_FILE.read_text().strip()
+    except Exception:
+        pass
+    return None
+def _save_token(token: str):
+    TOKEN_FILE.write_text(token.strip())
+
+# -----------------------------------------------------------------------------
+# Stricter middleware: protect all endpoints except UI/static/auth/docs/ping
+# -----------------------------------------------------------------------------
+from fastapi.responses import JSONResponse
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+
+    # Whitelist unauthenticated endpoints and static/UI assets
+    WHITELIST_PREFIXES = (
+        "/ui",              # UI + static
+        "/docs", "/redoc", "/openapi.json",  # docs
+        "/api/ping",        # health
+        "/api/auth/",       # auth ops
+        "/favicon.ico",
+    )
+    # Allow exact root path only
+    if path == "/":
+        return await call_next(request)
+    if any(path == p or path.startswith(p) for p in WHITELIST_PREFIXES):
+        return await call_next(request)
+
+    token = _load_token()
+    if not token:
+        # No token configured -> open access (dev mode)
+        return await call_next(request)
+
+    auth = request.headers.get("authorization") or request.headers.get("Authorization")
+    if not auth or not auth.lower().startswith("bearer "):
+        return JSONResponse({"ok": False, "error": {"error": "Missing Bearer token", "type": "AuthError"}}, status_code=403)
+    sent = auth.split(" ", 1)[1].strip()
+    if secrets.compare_digest(sent, token):
+        return await call_next(request)
+    return JSONResponse({"ok": False, "error": {"error": "Invalid token", "type": "AuthError"}}, status_code=403)
+
+# -----------------------------------------------------------------------------
+# Auth endpoints (keep existing, do not modify)
+# -----------------------------------------------------------------------------
+# (Assume already present elsewhere in code)
 
 # -----------------------------------------------------------------------------
 # WebSocket
