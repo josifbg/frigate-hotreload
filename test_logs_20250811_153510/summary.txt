@@ -1,0 +1,32 @@
+Run dir: test_logs_20250811_153510
+[36m[15:35:10] Ensuring token…[0m
+[36m[15:35:10] [1/11] PING[0m
+[32m✔ ping[0m
+[36m[15:35:14] [2/11] AUTH STATUS[0m
+[32m✔ auth_status[0m
+[36m[15:35:15] [3/11] SNAPSHOT CONFIG[0m
+[32m✔ get_config[0m
+[32m✔ Saved baseline to original_config.json[0m
+[36m[15:35:16] [4/11] VALIDATE CURRENT CONFIG[0m
+[32m✔ validate[0m
+[36m[15:35:17] [5/11] APPLY (DRY)[0m
+[32m✔ apply_dry[0m
+[36m[15:35:18] [6/11] CLONE CAMERA (DRY + APPLY)[0m
+[32m✔ clone_dry[0m
+[32m✔ clone_apply[0m
+[36m[15:35:18] [7/11] REORDER (PUT __test_cam FIRST)[0m
+[32m✔ reorder[0m
+[36m[15:35:19] [8/11] ADD TEMP CAMERA, THEN DELETE[0m
+[32m✔ set_cam[0m
+[32m✔ del_tmp[0m
+[36m[15:35:19] [9/11] BULK DELETE (DRY)[0m
+[32m✔ bulk_dry[0m
+[36m[15:35:20] [10/11] EXPORT CONFIG[0m
+[32m✔ export[0m
+[36m[15:35:20] [11/11] CLEANUP (__test_cam) + RESTORE BASELINE[0m
+[32m✔ restore[0m
+
+Passed: 14
+Failed: 0
+Run logs: test_logs_20250811_153510
+Main log (append): /Users/josifbg/Documents/VSCode/frigate-hotreload/test/test_api.log

@@ -1,0 +1,5 @@
+{"key":"__tmp_add","value":{
+  "name":"Temporary Cam",
+  "enabled":true,
+  "ffmpeg":{"url":"rtsp://user:pass@host/stream","width":1280,"height":720,"fps":10}
+},"apply":true}

@@ -19,28 +19,29 @@ import secrets
 
 from .config_manager import ConfigManager
 
-# Опитай да импортнеш Pydantic модела, ако съществува
+# Try to import a Pydantic model for the config if it exists
 try:
     from .config_schema import Config as ConfigModel  # type: ignore
 except Exception:
     ConfigModel = None  # type: ignore
 
 # -----------------------------------------------------------------------------
-# Помощници
+# Helpers
 # -----------------------------------------------------------------------------
 def _to_attr(obj: Any) -> Any:
-    """Рекурсивно превръща dict/list в обекти с атрибути за достъп (dot-access)."""
+    """Recursively convert dict/list into objects with attribute access (dot-access)."""
     if isinstance(obj, dict):
         return SimpleNamespace(**{k: _to_attr(v) for k, v in obj.items()})
     if isinstance(obj, list):
         return [_to_attr(x) for x in obj]
     return obj
 
+
 def _as_model_or_attr(raw_cfg: dict) -> Any:
-    """Предпочитай Pydantic модел; иначе dot-access обект."""
+    """Prefer a Pydantic model if available; otherwise return a dot-access object."""
     if ConfigModel is not None:
         try:
-            return ConfigModel(**raw_cfg)  # типово-сигурно, има .mqtt и т.н.
+            return ConfigModel(**raw_cfg)
         except Exception:
             pass
     return _to_attr(raw_cfg)
@@ -57,16 +58,19 @@ from starlette.requests import Request
 from fastapi.exceptions import RequestValidationError
 from starlette.responses import PlainTextResponse
 
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     # Ensure JSON body for all HTTP errors
     payload = {"ok": False, "error": {"error": exc.detail if isinstance(exc.detail, str) else exc.detail, "type": "HTTPException"}}
     return JSONResponse(payload, status_code=exc.status_code)
 
+
 @app.exception_handler(RequestValidationError)
 async def request_validation_handler(request: Request, exc: RequestValidationError):
     payload = {"ok": False, "error": {"error": "validation error", "type": "RequestValidationError", "detail": exc.errors()}}
     return JSONResponse(payload, status_code=422)
+
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
@@ -74,6 +78,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     err = {"error": str(exc), "type": exc.__class__.__name__, "trace": traceback.format_exc()}
     logger.error("Unhandled exception: %s", err["error"])  
     return JSONResponse({"ok": False, "applied": False, "error": err}, status_code=500)
+
+
 BASE_DIR = Path(__file__).parent
 DATA_DIR = BASE_DIR.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -95,7 +101,8 @@ def _load_token() -> str | None:
 def _save_token(token: str) -> None:
     TOKEN_FILE.write_text(token)
 
-manager = ConfigManager(DATA_DIR)  # твоята имплементация
+
+manager = ConfigManager(DATA_DIR)
 
 # -----------------------------------------------------------------------------
 # Compatibility adapters
@@ -124,6 +131,8 @@ def _read_config_from_disk() -> Dict[str, Any]:
             pass
     return _fallback_default_config()
 
+
+# Provide a generic "get_running_config" if the manager does not have one
 if not hasattr(manager, "get_running_config"):
     def _mgr_get_running() -> Dict[str, Any]:
         candidates = ["get_current", "current", "get_running", "load_running", "read_running", "read", "load", "get"]
@@ -144,9 +153,11 @@ if not hasattr(manager, "get_running_config"):
                 except Exception:
                     pass
         return _read_config_from_disk()
+
     manager.get_running_config = _mgr_get_running  # type: ignore
 
-# apply_config адаптер – винаги подава ПРАВИЛНИЯ payload (модел или attr-обект)
+
+# Provide a generic "apply_config" adapter based on what the manager exposes
 import inspect
 if not hasattr(manager, "apply_config"):
     if hasattr(manager, "apply") and callable(getattr(manager, "apply")):
@@ -172,13 +183,14 @@ if not hasattr(manager, "apply_config"):
             return {"saved_to": str(path)}
         manager.apply_config = _apply_fallback  # type: ignore
 
+
 if not hasattr(manager, "diff_configs"):
     def _diff_fallback(a: dict, b: dict) -> dict:
         return {"before": a, "after": b}
     manager.diff_configs = _diff_fallback  # type: ignore
 
 # -----------------------------------------------------------------------------
-# WS Bus
+# WebSocket Bus
 # -----------------------------------------------------------------------------
 class WSBus:
     def __init__(self) -> None:
@@ -202,19 +214,17 @@ class WSBus:
         for ws in dead:
             self.disconnect(ws)
 
+
 bus = WSBus()
 
 # -----------------------------------------------------------------------------
-# HTTP Middleware for Bearer token auth on mutating routes
-# -----------------------------------------------------------------------------
-
-# -----------------------------------------------------------------------------
-# Auth endpoints
+# Auth endpoints (token lifecycle)
 # -----------------------------------------------------------------------------
 @app.get("/api/auth/status")
 def auth_status() -> dict:
     t = _load_token()
     return {"enabled": bool(t), "have_token": bool(t)}
+
 
 @app.post("/api/auth/generate")
 def auth_generate() -> dict:
@@ -222,6 +232,7 @@ def auth_generate() -> dict:
     token = secrets.token_urlsafe(32)
     _save_token(token)
     return {"ok": True, "token": token}
+
 
 @app.post("/api/auth/disable")
 def auth_disable() -> dict:
@@ -232,16 +243,17 @@ def auth_disable() -> dict:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 # -----------------------------------------------------------------------------
 # Centralized apply with rich error reporting
 # -----------------------------------------------------------------------------
 logger = logging.getLogger("hotreload")
 logging.basicConfig(level=logging.INFO)
 
+
 def _candidate_payloads(raw_cfg: dict) -> list[Any]:
-    """Върни варианти: dict, Pydantic модел (ако има), attr-обект."""
+    """Return payload variants to try: dict, Pydantic model (if present), and attr-object."""
     variants: list[Any] = [raw_cfg]
-    model = None
     if ConfigModel is not None:
         try:
             model = ConfigModel(**raw_cfg)
@@ -251,8 +263,9 @@ def _candidate_payloads(raw_cfg: dict) -> list[Any]:
     variants.append(_to_attr(raw_cfg))
     return variants
 
+
 def _apply_config_safe(new_cfg: dict):
-    """Пробвай различни сигнатури и payload типове (dict / модел / attr-обект)."""
+    """Attempt various manager function signatures and payload types (dict/model/attr)."""
     tried: list[str] = []
     payloads = _candidate_payloads(new_cfg)
 
@@ -270,16 +283,18 @@ def _apply_config_safe(new_cfg: dict):
             except Exception as e2:
                 tried.append(f"{fn_name}({type(payload).__name__}, workers={{}}) -> {e2}")
 
-    # Last resort
+    # Last resort: write to disk
     path = DATA_DIR / "config.json"
     path.write_text(json.dumps(new_cfg, indent=2))
     return {"saved_to": str(path), "note": "fallback_apply", "tried": tried}
+
 
 async def _ws_event(event: str, **payload):
     try:
         await bus.broadcast({"event": event, **payload})
     except Exception:
         logger.debug("WS broadcast failed", exc_info=True)
+
 
 def _apply_with_errors(new_cfg: dict, ws_event: str | None = None, ws_payload: dict | None = None):
     try:
@@ -296,6 +311,7 @@ def _apply_with_errors(new_cfg: dict, ws_event: str | None = None, ws_payload: d
         logger.error("apply failed: %s", err["error"])
         return JSONResponse({"ok": False, "applied": False, "error": err}, status_code=500)
 
+
 # -----------------------------------------------------------------------------
 # Models (request bodies)
 # -----------------------------------------------------------------------------
@@ -310,31 +326,38 @@ class CameraDeleteReq(BaseModel):
     key: str
     apply: bool = True
 
+
 class CameraBulkDeleteReq(BaseModel):
     keys: List[str]
     apply: bool = True
 
+
 class CameraReorderReq(BaseModel):
     order: List[str]
     apply: bool = True
+
 
 class CameraSetReq(BaseModel):
     key: str
     value: Dict[str, Any]
     apply: bool = True
 
+
 # -----------------------------------------------------------------------------
-# Helpers
+# Basic helpers
 # -----------------------------------------------------------------------------
 def _deepcopy(obj: Any) -> Any:
     return json.loads(json.dumps(obj))
+
 
 def _ensure_cameras(cfg: dict) -> dict:
     cfg.setdefault("cameras", {})
     return cfg
 
+
 def _ok(**kw) -> JSONResponse:
     return JSONResponse({"ok": True, **kw})
+
 
 # -----------------------------------------------------------------------------
 # Routes: basic + static
@@ -343,17 +366,21 @@ def _ok(**kw) -> JSONResponse:
 def test() -> dict:
     return {"status": "OK"}
 
+
 # Root handler: redirect to UI
 @app.get("/")
 def root() -> RedirectResponse:
     return RedirectResponse(url="/ui/")
+
 
 # Ping route for quick version checks
 @app.get("/api/ping")
 def ping() -> dict:
     return {"pong": True, "version": app.version}
 
+
 app.mount("/ui", StaticFiles(directory=BASE_DIR / "static", html=True), name="ui")
+
 
 # -----------------------------------------------------------------------------
 # Validation helpers
@@ -369,7 +396,7 @@ def _is_int(x: Any) -> bool:
 
 def validate_config_full(cfg: dict) -> List[Dict[str, Any]]:
     """Return a list of validation error objects. Empty list means OK.
-    This keeps it lightweight but catches common mistakes.
+    Lightweight but catches common mistakes.
     """
     errors: List[Dict[str, Any]] = []
     if not isinstance(cfg, dict):
@@ -427,12 +454,14 @@ def validate_config_full(cfg: dict) -> List[Dict[str, Any]]:
 
     return errors
 
+
 # -----------------------------------------------------------------------------
 # Routes: config
 # -----------------------------------------------------------------------------
 @app.get("/api/config")
 def get_config() -> dict:
     return manager.get_running_config()
+
 
 @app.post("/api/config/validate")
 def validate_config(cfg: dict) -> dict:
@@ -444,6 +473,7 @@ def validate_config(cfg: dict) -> dict:
     if errs:
         raise HTTPException(status_code=400, detail={"errors": errs})
     return {"ok": True}
+
 
 @app.post("/api/config/apply")
 def apply_config(cfg: dict, dry: bool = Query(False, description="Preview only")) -> JSONResponse:
@@ -458,6 +488,7 @@ def apply_config(cfg: dict, dry: bool = Query(False, description="Preview only")
         ws_payload={"ts": (asyncio.get_event_loop().time() if asyncio.get_event_loop().is_running() else None)},
     )
 
+
 @app.get("/api/config/backups")
 def list_backups() -> dict:
     if hasattr(manager, "list_backups"):
@@ -466,6 +497,7 @@ def list_backups() -> dict:
         bdir = DATA_DIR / "backups"
         files = sorted([p.name for p in bdir.glob("*.json")]) if bdir.exists() else []
     return {"backups": files}
+
 
 @app.post("/api/config/rollback")
 def rollback(name: Optional[str] = Query(None)) -> JSONResponse:
@@ -477,6 +509,7 @@ def rollback(name: Optional[str] = Query(None)) -> JSONResponse:
         return _ok(rolled_back=True, name=name or "latest")
     raise HTTPException(status_code=400, detail="rollback failed")
 
+
 @app.post("/api/config/reset")
 def reset_to_disk() -> JSONResponse:
     if hasattr(manager, "reset_to_disk"):
@@ -487,6 +520,7 @@ def reset_to_disk() -> JSONResponse:
         return _ok(reset=True)
     raise HTTPException(status_code=400, detail="reset failed")
 
+
 @app.get("/api/config/export")
 def export_cfg() -> FileResponse:
     path = DATA_DIR / "config.json"
@@ -494,6 +528,7 @@ def export_cfg() -> FileResponse:
         current = manager.get_running_config()
         path.write_text(json.dumps(current, indent=2))
     return FileResponse(path, media_type="application/json", filename="config.json")
+
 
 @app.post("/api/config/import")
 def import_cfg(cfg: dict) -> JSONResponse:
@@ -522,6 +557,7 @@ def import_cfg(cfg: dict) -> JSONResponse:
         err = {"error": str(e), "type": e.__class__.__name__, "trace": traceback.format_exc()}
         logger.error("/api/config/import failed: %s", err["error"]) 
         return JSONResponse({"ok": False, "applied": False, "error": err}, status_code=500)
+
 
 # -----------------------------------------------------------------------------
 # NEW: Camera management API
@@ -552,6 +588,7 @@ def api_cam_clone(req: CameraCloneReq) -> JSONResponse:
         ws_payload={"from": req.source_key, "to": req.target_key},
     )
 
+
 @app.post("/api/cameras/delete")
 def api_cam_delete(req: CameraDeleteReq) -> JSONResponse:
     cfg = manager.get_running_config()
@@ -577,7 +614,7 @@ def api_cam_delete(req: CameraDeleteReq) -> JSONResponse:
 def api_cam_bulk_delete(req: CameraBulkDeleteReq) -> JSONResponse:
     cfg = manager.get_running_config()
     cams = cfg.get("cameras", {})
-    req_keys = list(dict.fromkeys(req.keys))  # unique preserve order
+    req_keys = list(dict.fromkeys(req.keys))  # unique while preserving order
     existing = [k for k in req_keys if k in cams]
     missing = [k for k in req_keys if k not in cams]
 
@@ -600,6 +637,7 @@ def api_cam_bulk_delete(req: CameraBulkDeleteReq) -> JSONResponse:
         ws_event="cams_deleted",
         ws_payload={"keys": existing},
     )
+
 
 @app.post("/api/cameras/reorder")
 def api_cam_reorder(req: CameraReorderReq) -> JSONResponse:
@@ -631,8 +669,9 @@ def api_cam_reorder(req: CameraReorderReq) -> JSONResponse:
         return JSONResponse(data)
     return resp
 
+
 # -----------------------------------------------------------------------------
-# Camera set endpoint
+# Camera set endpoint (create/overwrite a camera value)
 # -----------------------------------------------------------------------------
 @app.post("/api/cameras/set")
 def api_cam_set(req: CameraSetReq) -> JSONResponse:
@@ -655,23 +694,10 @@ def api_cam_set(req: CameraSetReq) -> JSONResponse:
 
 
 # -----------------------------------------------------------------------------
-# Auth helpers (token file, load/save)
-# -----------------------------------------------------------------------------
-TOKEN_FILE = DATA_DIR / "auth_token.txt"
-def _load_token():
-    try:
-        if TOKEN_FILE.exists():
-            return TOKEN_FILE.read_text().strip()
-    except Exception:
-        pass
-    return None
-def _save_token(token: str):
-    TOKEN_FILE.write_text(token.strip())
-
-# -----------------------------------------------------------------------------
-# Stricter middleware: protect all endpoints except UI/static/auth/docs/ping
+# Strict auth middleware: protect everything except UI/static/auth/docs/ping/root
 # -----------------------------------------------------------------------------
 from fastapi.responses import JSONResponse
+
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
@@ -704,13 +730,9 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
     return JSONResponse({"ok": False, "error": {"error": "Invalid token", "type": "AuthError"}}, status_code=403)
 
-# -----------------------------------------------------------------------------
-# Auth endpoints (keep existing, do not modify)
-# -----------------------------------------------------------------------------
-# (Assume already present elsewhere in code)
 
 # -----------------------------------------------------------------------------
-# WebSocket
+# WebSocket endpoint
 # -----------------------------------------------------------------------------
 @app.websocket("/ws")
 async def ws(ws: WebSocket):
