@@ -1,6 +1,7 @@
 site_name: Frigate Hot-Reload
-site_url: https://josifbg.github.io/frigate-hotreload/
+site_url: http://127.0.0.1:8000/
 repo_url: https://github.com/josifbg/frigate-hotreload
+
 theme:
   name: material
   language: en
@@ -10,19 +11,23 @@ theme:
     - content.code.copy
     - search.highlight
     - search.suggest
-nav:
-  - Overview: index.md
-  - Quickstart: quickstart.md
-  - Installation: install.md
-  - Configuration: configuration.md
-  - Cameras: cameras.md
-  - API: api.md
-  - UI: ui.md
-  - Troubleshooting: troubleshooting.md
-  - Changelog: changelog.md
-  - Roadmap: roadmap.md
+
 markdown_extensions:
   - admonition
   - codehilite
   - toc:
       permalink: true
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - API: api.md
+  - UI Guide: ui.md
+  - Configuration: configuration.md
+  - Cameras: cameras.md
+  - Examples: examples.md
+  - Security: security.md
+  - FAQ: faq.md
+  - Troubleshooting: troubleshooting.md
+  - Roadmap: roadmap.md
+  - Changelog: ../CHANGELOG.md
