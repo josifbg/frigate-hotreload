@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "applied": true,
+  "result": {
+    "applied": true,
+    "path": "/Users/josifbg/Documents/VSCode/frigate-hotreload/backend/data/config.json"
+  },
+  "order": [
+    "cam_test",
+    "__test_cam",
+    "cam1",
+    "cam2",
+    "cam3",
+    "cam4",
+    "cam5"
+  ]
+}

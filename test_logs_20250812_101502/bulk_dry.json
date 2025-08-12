@@ -1,0 +1,398 @@
+{
+  "ok": true,
+  "dry": true,
+  "diff": {
+    "before": {
+      "mqtt": {
+        "host": "mqtt",
+        "port": 1883,
+        "user": null,
+        "password": null,
+        "topic_prefix": "frigate"
+      },
+      "cameras": {
+        "cam_test": {
+          "name": "cam1",
+          "enabled": true,
+          "ffmpeg": {
+            "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+            "hwaccel": null,
+            "width": 1920,
+            "height": 1080,
+            "fps": 15
+          },
+          "onvif": {
+            "host": "http://host:8000",
+            "user": "user",
+            "pass": "pass"
+          },
+          "zones": [],
+          "detection": {
+            "score_threshold": 0.6,
+            "iou_threshold": 0.45
+          },
+          "retention": {
+            "mode": "motion",
+            "detection_days": 5,
+            "recording_days": 2,
+            "pre_capture_sec": 3,
+            "post_capture_sec": 3
+          }
+        },
+        "__test_cam": {
+          "name": "cam1",
+          "enabled": true,
+          "ffmpeg": {
+            "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+            "hwaccel": null,
+            "width": 1920,
+            "height": 1080,
+            "fps": 15
+          },
+          "onvif": {
+            "host": "http://host:8000",
+            "user": "user",
+            "pass": "pass"
+          },
+          "zones": [],
+          "detection": {
+            "score_threshold": 0.6,
+            "iou_threshold": 0.45
+          },
+          "retention": {
+            "mode": "motion",
+            "detection_days": 5,
+            "recording_days": 2,
+            "pre_capture_sec": 3,
+            "post_capture_sec": 3
+          }
+        },
+        "cam1": {
+          "name": "cam1",
+          "enabled": true,
+          "ffmpeg": {
+            "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+            "hwaccel": null,
+            "width": 1920,
+            "height": 1080,
+            "fps": 15
+          },
+          "onvif": {
+            "host": "http://host:8000",
+            "user": "user",
+            "pass": "pass"
+          },
+          "zones": [],
+          "detection": {
+            "score_threshold": 0.6,
+            "iou_threshold": 0.45
+          },
+          "retention": {
+            "mode": "motion",
+            "detection_days": 5,
+            "recording_days": 2,
+            "pre_capture_sec": 3,
+            "post_capture_sec": 3
+          }
+        },
+        "cam2": {
+          "name": "cam1",
+          "enabled": true,
+          "ffmpeg": {
+            "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+            "hwaccel": null,
+            "width": 1920,
+            "height": 1080,
+            "fps": 15
+          },
+          "onvif": {
+            "host": "http://host:8000",
+            "user": "user",
+            "pass": "pass"
+          },
+          "zones": [],
+          "detection": {
+            "score_threshold": 0.6,
+            "iou_threshold": 0.45
+          },
+          "retention": {
+            "mode": "motion",
+            "detection_days": 5,
+            "recording_days": 2,
+            "pre_capture_sec": 3,
+            "post_capture_sec": 3
+          }
+        },
+        "cam3": {
+          "name": "cam1",
+          "enabled": true,
+          "ffmpeg": {
+            "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+            "hwaccel": null,
+            "width": 1920,
+            "height": 1080,
+            "fps": 15
+          },
+          "onvif": {
+            "host": "http://host:8000",
+            "user": "user",
+            "pass": "pass"
+          },
+          "zones": [],
+          "detection": {
+            "score_threshold": 0.6,
+            "iou_threshold": 0.45
+          },
+          "retention": {
+            "mode": "motion",
+            "detection_days": 5,
+            "recording_days": 2,
+            "pre_capture_sec": 3,
+            "post_capture_sec": 3
+          }
+        },
+        "cam4": {
+          "name": "",
+          "enabled": true,
+          "ffmpeg": {
+            "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+            "hwaccel": null,
+            "width": 1920,
+            "height": 1080,
+            "fps": 15
+          },
+          "onvif": {
+            "host": "http://host:8000",
+            "user": "user",
+            "pass": "pass"
+          },
+          "zones": [],
+          "detection": {
+            "score_threshold": 0.6,
+            "iou_threshold": 0.45
+          },
+          "retention": {
+            "mode": "motion",
+            "detection_days": 5,
+            "recording_days": 2,
+            "pre_capture_sec": 3,
+            "post_capture_sec": 3
+          }
+        },
+        "cam5": {
+          "name": "cam1",
+          "enabled": true,
+          "ffmpeg": {
+            "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+            "hwaccel": null,
+            "width": 1920,
+            "height": 1080,
+            "fps": 15
+          },
+          "onvif": {
+            "host": "http://host:8000",
+            "user": "user",
+            "pass": "pass"
+          },
+          "zones": [],
+          "detection": {
+            "score_threshold": 0.6,
+            "iou_threshold": 0.45
+          },
+          "retention": {
+            "mode": "motion",
+            "detection_days": 5,
+            "recording_days": 2,
+            "pre_capture_sec": 3,
+            "post_capture_sec": 3
+          }
+        }
+      }
+    },
+    "after": {
+      "mqtt": {
+        "host": "mqtt",
+        "port": 1883,
+        "user": null,
+        "password": null,
+        "topic_prefix": "frigate"
+      },
+      "cameras": {
+        "cam_test": {
+          "name": "cam1",
+          "enabled": true,
+          "ffmpeg": {
+            "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+            "hwaccel": null,
+            "width": 1920,
+            "height": 1080,
+            "fps": 15
+          },
+          "onvif": {
+            "host": "http://host:8000",
+            "user": "user",
+            "pass": "pass"
+          },
+          "zones": [],
+          "detection": {
+            "score_threshold": 0.6,
+            "iou_threshold": 0.45
+          },
+          "retention": {
+            "mode": "motion",
+            "detection_days": 5,
+            "recording_days": 2,
+            "pre_capture_sec": 3,
+            "post_capture_sec": 3
+          }
+        },
+        "cam1": {
+          "name": "cam1",
+          "enabled": true,
+          "ffmpeg": {
+            "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+            "hwaccel": null,
+            "width": 1920,
+            "height": 1080,
+            "fps": 15
+          },
+          "onvif": {
+            "host": "http://host:8000",
+            "user": "user",
+            "pass": "pass"
+          },
+          "zones": [],
+          "detection": {
+            "score_threshold": 0.6,
+            "iou_threshold": 0.45
+          },
+          "retention": {
+            "mode": "motion",
+            "detection_days": 5,
+            "recording_days": 2,
+            "pre_capture_sec": 3,
+            "post_capture_sec": 3
+          }
+        },
+        "cam2": {
+          "name": "cam1",
+          "enabled": true,
+          "ffmpeg": {
+            "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+            "hwaccel": null,
+            "width": 1920,
+            "height": 1080,
+            "fps": 15
+          },
+          "onvif": {
+            "host": "http://host:8000",
+            "user": "user",
+            "pass": "pass"
+          },
+          "zones": [],
+          "detection": {
+            "score_threshold": 0.6,
+            "iou_threshold": 0.45
+          },
+          "retention": {
+            "mode": "motion",
+            "detection_days": 5,
+            "recording_days": 2,
+            "pre_capture_sec": 3,
+            "post_capture_sec": 3
+          }
+        },
+        "cam3": {
+          "name": "cam1",
+          "enabled": true,
+          "ffmpeg": {
+            "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+            "hwaccel": null,
+            "width": 1920,
+            "height": 1080,
+            "fps": 15
+          },
+          "onvif": {
+            "host": "http://host:8000",
+            "user": "user",
+            "pass": "pass"
+          },
+          "zones": [],
+          "detection": {
+            "score_threshold": 0.6,
+            "iou_threshold": 0.45
+          },
+          "retention": {
+            "mode": "motion",
+            "detection_days": 5,
+            "recording_days": 2,
+            "pre_capture_sec": 3,
+            "post_capture_sec": 3
+          }
+        },
+        "cam4": {
+          "name": "",
+          "enabled": true,
+          "ffmpeg": {
+            "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+            "hwaccel": null,
+            "width": 1920,
+            "height": 1080,
+            "fps": 15
+          },
+          "onvif": {
+            "host": "http://host:8000",
+            "user": "user",
+            "pass": "pass"
+          },
+          "zones": [],
+          "detection": {
+            "score_threshold": 0.6,
+            "iou_threshold": 0.45
+          },
+          "retention": {
+            "mode": "motion",
+            "detection_days": 5,
+            "recording_days": 2,
+            "pre_capture_sec": 3,
+            "post_capture_sec": 3
+          }
+        },
+        "cam5": {
+          "name": "cam1",
+          "enabled": true,
+          "ffmpeg": {
+            "url": "rtsp://user:pass@host:554/Streaming/Channels/101",
+            "hwaccel": null,
+            "width": 1920,
+            "height": 1080,
+            "fps": 15
+          },
+          "onvif": {
+            "host": "http://host:8000",
+            "user": "user",
+            "pass": "pass"
+          },
+          "zones": [],
+          "detection": {
+            "score_threshold": 0.6,
+            "iou_threshold": 0.45
+          },
+          "retention": {
+            "mode": "motion",
+            "detection_days": 5,
+            "recording_days": 2,
+            "pre_capture_sec": 3,
+            "post_capture_sec": 3
+          }
+        }
+      }
+    }
+  },
+  "to_delete": [
+    "__test_cam"
+  ],
+  "missing": [
+    "__tmp_cam"
+  ]
+}

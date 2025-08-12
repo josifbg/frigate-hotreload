@@ -5799,3 +5799,1099 @@ Run logs: test_logs_20250811_153510
 Main log (append): /Users/josifbg/Documents/VSCode/frigate-hotreload/test/test_api.log
 Main log (append): /Users/josifbg/Documents/VSCode/frigate-hotreload/test/test_api.log
 [1mDone.[0m See [36mtest_logs_20250811_153510[0m and [36m/Users/josifbg/Documents/VSCode/frigate-hotreload/test/test_api.log[0m.
+===== API Test Run Mon Aug 11 16:46:33 EEST 2025 =====
+Run dir: test_logs_20250811_164633
+Run dir: test_logs_20250811_164633
+[36m[16:46:33] Ensuring token…[0m
+[36m[16:46:33] Ensuring token…[0m
+[36m[16:46:33] [1/11] PING[0m
+[36m[16:46:33] [1/11] PING[0m
+
+# ping [GET /api/ping]
+HTTP/1.1 200 OK
+date: Mon, 11 Aug 2025 13:46:33 GMT
+server: uvicorn
+content-length: 31
+content-type: application/json
+
+
+{"pong":true,"version":"0.2.3"}
+[1m--- ping RESPONSE (headers) ---[0m
+HTTP/1.1 200 OK
+date: Mon, 11 Aug 2025 13:46:33 GMT
+server: uvicorn
+content-length: 31
+content-type: application/json
+
+HTTP/1.1 200 OK
+date: Mon, 11 Aug 2025 13:46:33 GMT
+server: uvicorn
+content-length: 31
+content-type: application/json
+
+[1m--- ping BODY (pretty) ---[0m
+{
+  "pong": true,
+  "version": "0.2.3"
+}
+{
+  "pong": true,
+  "version": "0.2.3"
+}
+[32m✔ ping[0m
+[32m✔ ping[0m
+[32m--- STEP OK ---[0m
+
+[36m[16:46:37] [2/11] AUTH STATUS[0m
+[36m[16:46:37] [2/11] AUTH STATUS[0m
+
+# auth_status [GET /api/auth/status]
+HTTP/1.1 200 OK
+date: Mon, 11 Aug 2025 13:46:36 GMT
+server: uvicorn
+content-length: 80
+content-type: application/json
+
+
+{"enabled":true,"have_token":true,"seconds_left":604547,"expires_at":1755524544}
+[1m--- auth_status RESPONSE (headers) ---[0m
+HTTP/1.1 200 OK
+date: Mon, 11 Aug 2025 13:46:36 GMT
+server: uvicorn
+content-length: 80
+content-type: application/json
+
+HTTP/1.1 200 OK
+date: Mon, 11 Aug 2025 13:46:36 GMT
+server: uvicorn
+content-length: 80
+content-type: application/json
+
+[1m--- auth_status BODY (pretty) ---[0m
+{
+  "enabled": true,
+  "have_token": true,
+  "seconds_left": 604547,
+  "expires_at": 1755524544
+}
+{
+  "enabled": true,
+  "have_token": true,
+  "seconds_left": 604547,
+  "expires_at": 1755524544
+}
+[32m✔ auth_status[0m
+[32m✔ auth_status[0m
+[32m--- STEP OK ---[0m
+
+[36m[16:46:37] [3/11] SNAPSHOT CONFIG[0m
+[36m[16:46:37] [3/11] SNAPSHOT CONFIG[0m
+
+# get_config [GET /api/config]
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:37 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- get_config RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:37 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:37 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- get_config BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ get_config -> HTTP 403 (see test_logs_20250811_164633/get_config.h)[0m
+[31m✖ get_config -> HTTP 403 (see test_logs_20250811_164633/get_config.h)[0m
+[32m--- STEP OK ---[0m
+
+[36m[16:46:48] [4/11] VALIDATE CURRENT CONFIG[0m
+[36m[16:46:48] [4/11] VALIDATE CURRENT CONFIG[0m
+
+# validate [POST /api/config/validate]
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:48 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- validate RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:48 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:48 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- validate BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)[0m
+[31m✖ validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)[0m
+[31m--- STEP FAILED (rc=1) ---[0m
+
+[33m⚠ Retrying…[0m
+[33m⚠ Retrying…[0m
+[36m[16:46:50] [4/11] VALIDATE CURRENT CONFIG[0m
+[36m[16:46:50] [4/11] VALIDATE CURRENT CONFIG[0m
+
+# validate [POST /api/config/validate]
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:50 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- validate RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:50 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:50 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- validate BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)[0m
+[31m✖ validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)[0m
+[31m--- STEP FAILED (rc=1) ---[0m
+
+[33m⚠ Retrying…[0m
+[33m⚠ Retrying…[0m
+[36m[16:46:51] [4/11] VALIDATE CURRENT CONFIG[0m
+[36m[16:46:51] [4/11] VALIDATE CURRENT CONFIG[0m
+
+# validate [POST /api/config/validate]
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:50 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- validate RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:50 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:50 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- validate BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)[0m
+[31m✖ validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)[0m
+[31m--- STEP FAILED (rc=1) ---[0m
+
+[33m⚠ Retrying…[0m
+[33m⚠ Retrying…[0m
+[36m[16:46:56] [4/11] VALIDATE CURRENT CONFIG[0m
+[36m[16:46:56] [4/11] VALIDATE CURRENT CONFIG[0m
+
+# validate [POST /api/config/validate]
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:56 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- validate RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:56 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:46:56 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- validate BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)[0m
+[31m✖ validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)[0m
+[31m--- STEP FAILED (rc=1) ---[0m
+
+[33m⚠ Retrying…[0m
+[33m⚠ Retrying…[0m
+[36m[16:47:03] [4/11] VALIDATE CURRENT CONFIG[0m
+[36m[16:47:03] [4/11] VALIDATE CURRENT CONFIG[0m
+
+# validate [POST /api/config/validate]
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:03 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- validate RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:03 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:03 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- validate BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)[0m
+[31m✖ validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)[0m
+[31m--- STEP FAILED (rc=1) ---[0m
+
+[33m⚠ Skipping failed step.[0m
+[33m⚠ Skipping failed step.[0m
+[36m[16:47:09] [5/11] APPLY (DRY)[0m
+[36m[16:47:09] [5/11] APPLY (DRY)[0m
+
+# apply_dry [POST /api/config/apply?dry=true]
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:09 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- apply_dry RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:09 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:09 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- apply_dry BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ apply_dry -> HTTP 403 (see test_logs_20250811_164633/apply_dry.h)[0m
+[31m✖ apply_dry -> HTTP 403 (see test_logs_20250811_164633/apply_dry.h)[0m
+[31m--- STEP FAILED (rc=1) ---[0m
+
+[33m⚠ Skipping failed step.[0m
+[33m⚠ Skipping failed step.[0m
+[36m[16:47:17] [6/11] CLONE CAMERA (DRY + APPLY)[0m
+[36m[16:47:17] [6/11] CLONE CAMERA (DRY + APPLY)[0m
+[31m✖ No cameras in config[0m
+[31m✖ No cameras in config[0m
+[31m--- STEP FAILED (rc=1) ---[0m
+
+[33m⚠ Skipping failed step.[0m
+[33m⚠ Skipping failed step.[0m
+[36m[16:47:26] [7/11] REORDER (PUT __test_cam FIRST)[0m
+[36m[16:47:26] [7/11] REORDER (PUT __test_cam FIRST)[0m
+
+# reorder [POST /api/cameras/reorder]
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:26 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- reorder RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:26 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:26 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- reorder BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ reorder -> HTTP 403 (see test_logs_20250811_164633/reorder.h)[0m
+[31m✖ reorder -> HTTP 403 (see test_logs_20250811_164633/reorder.h)[0m
+[31m--- STEP FAILED (rc=1) ---[0m
+
+[33m⚠ Skipping failed step.[0m
+[33m⚠ Skipping failed step.[0m
+[36m[16:47:31] [8/11] ADD TEMP CAMERA, THEN DELETE[0m
+[36m[16:47:31] [8/11] ADD TEMP CAMERA, THEN DELETE[0m
+
+# set_cam [POST /api/cameras/set]
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:30 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- set_cam RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:30 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:30 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- set_cam BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ set_cam -> HTTP 403 (see test_logs_20250811_164633/set_cam.h)[0m
+[31m✖ set_cam -> HTTP 403 (see test_logs_20250811_164633/set_cam.h)[0m
+[31m--- STEP FAILED (rc=1) ---[0m
+
+[33m⚠ Skipping failed step.[0m
+[33m⚠ Skipping failed step.[0m
+[36m[16:47:33] [9/11] BULK DELETE (DRY)[0m
+[36m[16:47:33] [9/11] BULK DELETE (DRY)[0m
+
+# bulk_dry [POST /api/cameras/bulk_delete]
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:32 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- bulk_dry RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:32 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:32 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- bulk_dry BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ bulk_dry -> HTTP 403 (see test_logs_20250811_164633/bulk_dry.h)[0m
+[31m✖ bulk_dry -> HTTP 403 (see test_logs_20250811_164633/bulk_dry.h)[0m
+[31m--- STEP FAILED (rc=1) ---[0m
+
+[33m⚠ Skipping failed step.[0m
+[33m⚠ Skipping failed step.[0m
+[36m[16:47:37] [10/11] EXPORT CONFIG[0m
+[36m[16:47:37] [10/11] EXPORT CONFIG[0m
+
+# export [GET /api/config/export]
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:37 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- export RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:37 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Mon, 11 Aug 2025 13:47:37 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- export BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ export -> HTTP 403 (see test_logs_20250811_164633/export.h)[0m
+[31m✖ export -> HTTP 403 (see test_logs_20250811_164633/export.h)[0m
+[31m--- STEP FAILED (rc=1) ---[0m
+
+Aborted by user.
+===== API Test Run Tue Aug 12 09:44:13 EEST 2025 =====
+Run dir: test_logs_20250812_094413
+Run dir: test_logs_20250812_094413
+[36m[09:44:13] Ensuring token…[0m
+[36m[09:44:13] Ensuring token…[0m
+[36m[09:44:13] [1/11] PING[0m
+[36m[09:44:13] [1/11] PING[0m
+
+# ping [GET /api/ping]
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 06:44:12 GMT
+server: uvicorn
+content-length: 31
+content-type: application/json
+
+
+{"pong":true,"version":"0.2.3"}
+[1m--- ping RESPONSE (headers) ---[0m
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 06:44:12 GMT
+server: uvicorn
+content-length: 31
+content-type: application/json
+
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 06:44:12 GMT
+server: uvicorn
+content-length: 31
+content-type: application/json
+
+[1m--- ping BODY (pretty) ---[0m
+{
+  "pong": true,
+  "version": "0.2.3"
+}
+{
+  "pong": true,
+  "version": "0.2.3"
+}
+[32m✔ ping[0m
+[32m✔ ping[0m
+[32m--- STEP OK ---[0m
+
+[36m[09:44:15] [2/11] AUTH STATUS[0m
+[36m[09:44:15] [2/11] AUTH STATUS[0m
+
+# auth_status [GET /api/auth/status]
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 06:44:15 GMT
+server: uvicorn
+content-length: 80
+content-type: application/json
+
+
+{"enabled":true,"have_token":true,"seconds_left":543489,"expires_at":1755524544}
+[1m--- auth_status RESPONSE (headers) ---[0m
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 06:44:15 GMT
+server: uvicorn
+content-length: 80
+content-type: application/json
+
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 06:44:15 GMT
+server: uvicorn
+content-length: 80
+content-type: application/json
+
+[1m--- auth_status BODY (pretty) ---[0m
+{
+  "enabled": true,
+  "have_token": true,
+  "seconds_left": 543489,
+  "expires_at": 1755524544
+}
+{
+  "enabled": true,
+  "have_token": true,
+  "seconds_left": 543489,
+  "expires_at": 1755524544
+}
+[32m✔ auth_status[0m
+[32m✔ auth_status[0m
+[32m--- STEP OK ---[0m
+
+[36m[09:44:17] [3/11] SNAPSHOT CONFIG[0m
+[36m[09:44:17] [3/11] SNAPSHOT CONFIG[0m
+
+# get_config [GET /api/config]
+HTTP/1.1 403 Forbidden
+date: Tue, 12 Aug 2025 06:44:16 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- get_config RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Tue, 12 Aug 2025 06:44:16 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Tue, 12 Aug 2025 06:44:16 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- get_config BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ get_config -> HTTP 403 (see test_logs_20250812_094413/get_config.h)[0m
+[31m✖ get_config -> HTTP 403 (see test_logs_20250812_094413/get_config.h)[0m
+[32m--- STEP OK ---[0m
+
+Aborted by user.
+===== API Test Run Tue Aug 12 09:47:39 EEST 2025 =====
+Run dir: test_logs_20250812_094739
+Run dir: test_logs_20250812_094739
+[36m[09:47:39] Ensuring token…[0m
+[36m[09:47:39] Ensuring token…[0m
+[36m[09:47:39] [1/11] PING[0m
+[36m[09:47:39] [1/11] PING[0m
+
+# ping [GET /api/ping]
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 06:47:38 GMT
+server: uvicorn
+content-length: 31
+content-type: application/json
+
+
+{"pong":true,"version":"0.2.3"}
+[1m--- ping RESPONSE (headers) ---[0m
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 06:47:38 GMT
+server: uvicorn
+content-length: 31
+content-type: application/json
+
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 06:47:38 GMT
+server: uvicorn
+content-length: 31
+content-type: application/json
+
+[1m--- ping BODY (pretty) ---[0m
+{
+  "pong": true,
+  "version": "0.2.3"
+}
+{
+  "pong": true,
+  "version": "0.2.3"
+}
+[32m✔ ping[0m
+[32m✔ ping[0m
+[32m--- STEP OK ---[0m
+
+[36m[09:47:47] [2/11] AUTH STATUS[0m
+[36m[09:47:47] [2/11] AUTH STATUS[0m
+
+# auth_status [GET /api/auth/status]
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 06:47:47 GMT
+server: uvicorn
+content-length: 80
+content-type: application/json
+
+
+{"enabled":true,"have_token":true,"seconds_left":543277,"expires_at":1755524544}
+[1m--- auth_status RESPONSE (headers) ---[0m
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 06:47:47 GMT
+server: uvicorn
+content-length: 80
+content-type: application/json
+
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 06:47:47 GMT
+server: uvicorn
+content-length: 80
+content-type: application/json
+
+[1m--- auth_status BODY (pretty) ---[0m
+{
+  "enabled": true,
+  "have_token": true,
+  "seconds_left": 543277,
+  "expires_at": 1755524544
+}
+{
+  "enabled": true,
+  "have_token": true,
+  "seconds_left": 543277,
+  "expires_at": 1755524544
+}
+[32m✔ auth_status[0m
+[32m✔ auth_status[0m
+[32m--- STEP OK ---[0m
+
+[36m[09:47:50] [3/11] SNAPSHOT CONFIG[0m
+[36m[09:47:50] [3/11] SNAPSHOT CONFIG[0m
+
+# get_config [GET /api/config]
+HTTP/1.1 403 Forbidden
+date: Tue, 12 Aug 2025 06:47:49 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- get_config RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Tue, 12 Aug 2025 06:47:49 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Tue, 12 Aug 2025 06:47:49 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- get_config BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ get_config -> HTTP 403 (see test_logs_20250812_094739/get_config.h)[0m
+[31m✖ get_config -> HTTP 403 (see test_logs_20250812_094739/get_config.h)[0m
+[32m--- STEP OK ---[0m
+
+[36m[09:47:59] [4/11] VALIDATE CURRENT CONFIG[0m
+[36m[09:47:59] [4/11] VALIDATE CURRENT CONFIG[0m
+
+# validate [POST /api/config/validate]
+HTTP/1.1 403 Forbidden
+date: Tue, 12 Aug 2025 06:47:58 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- validate RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Tue, 12 Aug 2025 06:47:58 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Tue, 12 Aug 2025 06:47:58 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- validate BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ validate -> HTTP 403 (see test_logs_20250812_094739/validate.h)[0m
+[31m✖ validate -> HTTP 403 (see test_logs_20250812_094739/validate.h)[0m
+[31m--- STEP FAILED (rc=1) ---[0m
+
+Aborted by user.
+===== API Test Run Tue Aug 12 10:05:35 EEST 2025 =====
+Run dir: test_logs_20250812_100535
+Run dir: test_logs_20250812_100535
+[36m[10:05:35] Ensuring token…[0m
+[36m[10:05:35] Ensuring token…[0m
+[36m[10:05:35] [1/11] PING[0m
+[36m[10:05:35] [1/11] PING[0m
+
+# ping [GET /api/ping]
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 07:05:35 GMT
+server: uvicorn
+content-length: 31
+content-type: application/json
+
+
+{"pong":true,"version":"0.2.3"}
+[1m--- ping RESPONSE (headers) ---[0m
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 07:05:35 GMT
+server: uvicorn
+content-length: 31
+content-type: application/json
+
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 07:05:35 GMT
+server: uvicorn
+content-length: 31
+content-type: application/json
+
+[1m--- ping BODY (pretty) ---[0m
+{
+  "pong": true,
+  "version": "0.2.3"
+}
+{
+  "pong": true,
+  "version": "0.2.3"
+}
+[32m✔ ping[0m
+[32m✔ ping[0m
+[32m--- STEP OK ---[0m
+
+[36m[10:05:42] [2/11] AUTH STATUS[0m
+[36m[10:05:42] [2/11] AUTH STATUS[0m
+
+# auth_status [GET /api/auth/status]
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 07:05:41 GMT
+server: uvicorn
+content-length: 80
+content-type: application/json
+
+
+{"enabled":true,"have_token":true,"seconds_left":604741,"expires_at":1755587083}
+[1m--- auth_status RESPONSE (headers) ---[0m
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 07:05:41 GMT
+server: uvicorn
+content-length: 80
+content-type: application/json
+
+HTTP/1.1 200 OK
+date: Tue, 12 Aug 2025 07:05:41 GMT
+server: uvicorn
+content-length: 80
+content-type: application/json
+
+[1m--- auth_status BODY (pretty) ---[0m
+{
+  "enabled": true,
+  "have_token": true,
+  "seconds_left": 604741,
+  "expires_at": 1755587083
+}
+{
+  "enabled": true,
+  "have_token": true,
+  "seconds_left": 604741,
+  "expires_at": 1755587083
+}
+[32m✔ auth_status[0m
+[32m✔ auth_status[0m
+[32m--- STEP OK ---[0m
+
+[36m[10:05:43] [3/11] SNAPSHOT CONFIG[0m
+[36m[10:05:43] [3/11] SNAPSHOT CONFIG[0m
+
+# get_config [GET /api/config]
+HTTP/1.1 403 Forbidden
+date: Tue, 12 Aug 2025 07:05:43 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+
+{"ok":false,"error":{"error":"Invalid token","type":"AuthError"}}
+[1m--- get_config RESPONSE (headers) ---[0m
+HTTP/1.1 403 Forbidden
+date: Tue, 12 Aug 2025 07:05:43 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+HTTP/1.1 403 Forbidden
+date: Tue, 12 Aug 2025 07:05:43 GMT
+server: uvicorn
+content-length: 65
+content-type: application/json
+
+[1m--- get_config BODY (pretty) ---[0m
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+{
+  "ok": false,
+  "error": {
+    "error": "Invalid token",
+    "type": "AuthError"
+  }
+}
+[31m✖ get_config -> HTTP 403 (see test_logs_20250812_100535/get_config.h)[0m
+[31m✖ get_config -> HTTP 403 (see test_logs_20250812_100535/get_config.h)[0m
+[32m--- STEP OK ---[0m
+
+Aborted by user.
+Run dir: test_logs_20250812_100943
+
+[10:09:43] [1/11] PING
+Run dir: test_logs_20250812_101502
+
+[10:15:02] [1/11] PING
+[10:15:02] ping -> HTTP 200
+✔ ping
+--- STEP OK ---
+
+[10:15:09] [2/11] AUTH STATUS
+[10:15:09] auth_status -> HTTP 200
+✔ auth_status
+--- STEP OK ---
+
+[10:15:13] [3/11] SNAPSHOT CONFIG
+[10:15:13] get_config -> HTTP 200
+✔ get_config
+--- STEP OK ---
+
+[10:15:14] [4/11] VALIDATE CURRENT CONFIG
+[10:15:15] validate -> HTTP 200
+✔ validate
+--- STEP OK ---
+
+[10:15:16] [5/11] APPLY (DRY)
+[10:15:16] apply_dry -> HTTP 200
+✔ apply_dry
+--- STEP OK ---
+
+[10:15:19] [6/11] CLONE CAMERA (DRY + APPLY)
+[10:15:19] clone_dry -> HTTP 200
+✔ clone_dry
+--- STEP OK ---
+[10:15:19] clone_apply -> HTTP 200
+✔ clone_apply
+--- STEP OK ---
+
+[10:15:22] [7/11] REORDER (MOVE LAST FIRST)
+[10:15:22] reorder -> HTTP 200
+✔ reorder
+--- STEP OK ---
+
+[10:15:25] [8/11] ADD TEMP CAMERA, THEN DELETE
+[10:15:25] set_cam -> HTTP 200
+✔ set_cam
+--- STEP OK ---
+[10:15:25] del_cam -> HTTP 200
+✔ del_cam
+--- STEP OK ---
+
+[10:15:27] [9/11] BULK DELETE (DRY)
+[10:15:27] bulk_dry -> HTTP 200
+✔ bulk_dry
+--- STEP OK ---
+
+[10:15:29] [10/11] EXPORT CONFIG
+[10:15:29] export -> HTTP 200
+✔ export
+--- STEP OK ---
+
+[10:15:30] [11/11] ROLLBACK LATEST
+[10:15:30] rollback -> HTTP 200
+✔ rollback
+--- STEP OK ---
+All steps finished. See /Users/josifbg/Documents/VSCode/frigate-hotreload/test_logs_20250812_101502

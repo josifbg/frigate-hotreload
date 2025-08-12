@@ -1,0 +1,1 @@
+{"key":"__tmp_cam","value":{"name":"tmp","enabled":true,"ffmpeg":{"url":"rtsp://user:pass@h/stream","width":1280,"height":720,"fps":10}},"apply":true}

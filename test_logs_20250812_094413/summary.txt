@@ -1,0 +1,8 @@
+Run dir: test_logs_20250812_094413
+[36m[09:44:13] Ensuring token…[0m
+[36m[09:44:13] [1/11] PING[0m
+[32m✔ ping[0m
+[36m[09:44:15] [2/11] AUTH STATUS[0m
+[32m✔ auth_status[0m
+[36m[09:44:17] [3/11] SNAPSHOT CONFIG[0m
+[31m✖ get_config -> HTTP 403 (see test_logs_20250812_094413/get_config.h)[0m

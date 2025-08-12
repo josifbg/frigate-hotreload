@@ -1,10 +1,89 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/Users/josifbg/Documents/VSCode/frigate-hotreload"
+# ----- Resolve project root -----
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$ROOT"
 
+API="http://127.0.0.1:8080"
+
 echo "=== Backup Script (with tests) ==="
+
+# ----- Token paths & helpers -----
+TOKEN_FILE="$ROOT/backend/data/auth_token.txt"
+mkdir -p "$(dirname "$TOKEN_FILE")"  # ensure data dir exists
+
+read_token() {
+  if [[ -f "$TOKEN_FILE" ]]; then
+    # Try JSON { "token": "..." }
+    local j
+    if j="$(jq -r 'if type=="object" and .token then .token else empty end' "$TOKEN_FILE" 2>/dev/null)" && [[ -n "$j" ]]; then
+      printf '%s' "$j"
+      return 0
+    fi
+    # Fallback: plain string
+    tr -d '\n' < "$TOKEN_FILE"
+    return 0
+  fi
+  return 1
+}
+
+set_auth_header() {
+  local tok
+  if tok="$(read_token 2>/dev/null)"; then
+    AUTH_HEADER=( -H "Authorization: Bearer $tok" )
+  else
+    AUTH_HEADER=()
+  fi
+}
+
+ensure_token() {
+  echo "[TOKEN] Checking token status…"
+  # 1) Check server auth status
+  local status_json
+  status_json="$(curl -sS "$API/api/auth/status" || echo '{}')"
+  local enabled
+  enabled="$(jq -r '.enabled // false' <<<"$status_json" 2>/dev/null || echo false)"
+
+  if [[ "$enabled" != "true" ]]; then
+    echo "[TOKEN] Auth is disabled on server."
+    AUTH_HEADER=()
+    return 0
+  fi
+
+  # 2) Probe with existing token
+  set_auth_header
+  if [[ "${#AUTH_HEADER[@]}" -gt 0 ]]; then
+    local code
+    code="$(curl -sS -o /dev/null -w '%{http_code}' "${AUTH_HEADER[@]}" "$API/api/ping" || echo 000)"
+    if [[ "$code" == "200" ]]; then
+      echo "[TOKEN] Existing token is valid."
+      return 0
+    fi
+  fi
+
+  # 3) Generate a new token
+  echo "[TOKEN] Generating a new token…"
+  local gen
+  gen="$(curl -sS -X POST "$API/api/auth/generate" || echo '{}')"
+  local new_tok expires
+  new_tok="$(jq -r '.token // empty' <<<"$gen" 2>/dev/null || true)"
+  expires="$(jq -r '.expires_at // empty' <<<"$gen" 2>/dev/null || true)"
+  if [[ -n "$new_tok" ]]; then
+    if [[ -n "$expires" ]]; then
+      printf '{ "token": "%s", "expires": %s }\n' "$new_tok" "$expires" >"$TOKEN_FILE"
+    else
+      printf '{ "token": "%s" }\n' "$new_tok" >"$TOKEN_FILE"
+    fi
+    echo "[TOKEN] Token written to $TOKEN_FILE"
+    set_auth_header
+    return 0
+  fi
+
+  echo "[TOKEN] Failed to generate token; continuing without Authorization header."
+  AUTH_HEADER=()
+  return 0
+}
 
 # ---------- 0) Run tests ----------
 TEST_DIR="$ROOT/test"
@@ -12,12 +91,12 @@ TEST_SCRIPT="$TEST_DIR/test_api.sh"
 LOG_DIR="$TEST_DIR"
 LOG_FILE="$LOG_DIR/test_api.log"
 
+# Make sure token is valid before starting tests (test script също прави ensure за всяка стъпка)
+ensure_token
+
 if [[ -x "$TEST_SCRIPT" ]]; then
   echo "[TEST] Running API tests..."
-  # осигуряване на папка за логове
   mkdir -p "$LOG_DIR"
-  # пускаме тестовете (те сами пишат в $LOG_FILE; осигуряваме и дублиране към конзолата)
-  # ако тестовият скрипт връща код ≠0, ще хванем това и ще питаме дали да продължим
   set +e
   "$TEST_SCRIPT" | tee -a "$LOG_FILE"
   TEST_RC=${PIPESTATUS[0]}
@@ -103,17 +182,13 @@ fi
 # ---------- 5) Local snapshot ----------
 read -rp "Create local backup snapshot? (y/n): " DO_BACKUP
 if [[ "$DO_BACKUP" =~ ^[Yy]$ ]]; then
-  # архив на кода
   git archive --format=tar.gz -o "$DEST/repo_${TAG}_$TS.tgz" HEAD
-  # конфигурации/данни
-  rsync -av --delete backend/data/ "$DEST/data/" 2>/dev/null || true
-  # тестове и логове
+  rsync -av --delete "$ROOT/backend/data/" "$DEST/data/" 2>/dev/null || true
   if [[ -d "$TEST_DIR" ]]; then
     rsync -av "$TEST_DIR/" "$DEST/test/" 2>/dev/null || true
   fi
   [[ -f "$LOG_FILE" ]] && cp "$LOG_FILE" "$DEST/" || true
 
-  # кратък опис
   cat > "$DEST/README.txt" <<EON
 Snapshot at: $(date)
 Tag: $TAG

@@ -1,0 +1,12 @@
+[Mon Aug 11 16:46:37 EEST 2025] get_config -> HTTP 403 (see test_logs_20250811_164633/get_config.h)
+[Mon Aug 11 16:46:48 EEST 2025] validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)
+[Mon Aug 11 16:46:50 EEST 2025] validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)
+[Mon Aug 11 16:46:51 EEST 2025] validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)
+[Mon Aug 11 16:46:56 EEST 2025] validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)
+[Mon Aug 11 16:47:03 EEST 2025] validate -> HTTP 403 (see test_logs_20250811_164633/validate.h)
+[Mon Aug 11 16:47:09 EEST 2025] apply_dry -> HTTP 403 (see test_logs_20250811_164633/apply_dry.h)
+[Mon Aug 11 16:47:17 EEST 2025] No cameras in config
+[Mon Aug 11 16:47:26 EEST 2025] reorder -> HTTP 403 (see test_logs_20250811_164633/reorder.h)
+[Mon Aug 11 16:47:31 EEST 2025] set_cam -> HTTP 403 (see test_logs_20250811_164633/set_cam.h)
+[Mon Aug 11 16:47:33 EEST 2025] bulk_dry -> HTTP 403 (see test_logs_20250811_164633/bulk_dry.h)
+[Mon Aug 11 16:47:37 EEST 2025] export -> HTTP 403 (see test_logs_20250811_164633/export.h)

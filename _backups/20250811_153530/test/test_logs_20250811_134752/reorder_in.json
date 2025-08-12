@@ -1,0 +1,12 @@
+{
+  "order": [
+    "__test_cam",
+    "cam1",
+    "cam2",
+    "cam3",
+    "cam4",
+    "cam5",
+    "cam_test"
+  ],
+  "apply": true
+}

@@ -45,7 +45,7 @@
 <header>
   <h1>Frigate Hot-Reload</h1>
   <div class="actions">
-    <span id="authPill" class="pill"><span class="dot warn"></span><span>Auth: unknown</span></span>
+    <span id="authPill" class="pill"><span class="dot warn"></span><span>Auth: unknown</span><span id="authTTL" class="muted"></span></span>
     <input id="apiToken" type="password" placeholder="API token (optional)" style="border-radius:8px; border:1px solid #cbd5e1; padding:6px 8px;" />
     <button id="genToken" class="ghost">Generate token</button>
     <button id="ensureAccess" class="ghost">Ensure access</button>
@@ -171,6 +171,8 @@ function authHeaders(base={}){ const t = getToken(); return t ? { ...base, 'Auth
 const log = (m) => { const el = $('#log'); el.textContent += (typeof m==='string'?m:JSON.stringify(m)) + '\n'; el.scrollTop = el.scrollHeight; };
 
 let state = { cfg: {}, selected: null, sel: {} };
+let authTimerId = null;
+let authSecondsLeft = null;
 let undo = { key: null, value: null, index: null, t: null, left: 0, timerId: null };
 
 // ---- Presets ----
@@ -249,21 +251,41 @@ async function refreshAuthUI(){
     const pill = document.getElementById('authPill');
     const dot = pill?.querySelector('.dot');
     const text = pill?.querySelector('span:last-child');
+    const ttl = document.getElementById('authTTL');
     const st = await fetchJSON('/api/auth/status');
     if(!pill || !st.ok) return;
+
+    // reset timer
+    if(authTimerId){ clearInterval(authTimerId); authTimerId = null; }
+    authSecondsLeft = null;
+
     if(st.data.enabled){
       if(dot){ dot.classList.remove('ok','err','warn'); dot.classList.add('ok'); }
       if(text) text.textContent = 'Auth: enabled';
-      const tok = getToken();
-      if(!tok){
-        if(dot){ dot.classList.remove('ok','err'); dot.classList.add('warn'); }
-        if(text) text.textContent = 'Auth: enabled (no token)';
-      }
+      const left = st.data.seconds_left;
+      if(typeof left === 'number'){
+        authSecondsLeft = left;
+        updateTTLLabel();
+        authTimerId = setInterval(()=>{ if(authSecondsLeft>0){ authSecondsLeft--; updateTTLLabel(); } }, 1000);
+      } else { if(ttl) ttl.textContent = ''; }
     } else {
       if(dot){ dot.classList.remove('ok','err','warn'); dot.classList.add('warn'); }
       if(text) text.textContent = 'Auth: disabled';
+      if(ttl) ttl.textContent = '';
     }
   }catch(_){ /* ignore */ }
+}
+function fmtHMS(total){
+  if(total == null) return '';
+  const s = Math.max(0, Math.floor(total));
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), ss = s%60;
+  return (h>0? (h+':'+String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0')) : (m+':'+String(ss).padStart(2,'0')));
+}
+function updateTTLLabel(){
+  const ttl = document.getElementById('authTTL');
+  if(!ttl) return;
+  if(authSecondsLeft == null) { ttl.textContent=''; return; }
+  ttl.textContent = '· ' + fmtHMS(authSecondsLeft);
 }
 
 async function ensureAccess(){
@@ -629,6 +651,7 @@ async function generateToken(){
     try { localStorage.setItem('api_token', gen.data.token); localStorage.removeItem('auth_disabled'); } catch {}
     const input = $('#apiToken'); if(input) input.value = gen.data.token;
     alert('New token generated and saved.');
+    await refreshAuthUI();
   }else{
     alert('Failed to generate token: ' + JSON.stringify(gen.data));
   }
@@ -642,6 +665,7 @@ async function disableAuth(){
     try { localStorage.removeItem('api_token'); localStorage.setItem('auth_disabled','1'); } catch {}
     const input = $('#apiToken'); if(input) input.value = '';
     alert('Authentication disabled.');
+    await refreshAuthUI();
   } else {
     alert('Failed to disable: ' + JSON.stringify(res.data));
   }

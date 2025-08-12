@@ -1,268 +1,250 @@
 #!/usr/bin/env bash
-# Interactive API test runner for Frigate Hot-Reload
-# Writes consolidated log to: /Users/josifbg/Documents/VSCode/frigate-hotreload/test/test_api.log
+set -euo pipefail
 
-set -u
+# ---------- Setup ----------
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$ROOT"
 
-# --- Settings ---
-BASE="${BASE:-http://127.0.0.1:8080}"
-DATA_DIR="${DATA_DIR:-/Users/josifbg/Documents/VSCode/frigate-hotreload/backend/data}"
-TOKEN_FILE="${TOKEN_FILE:-$DATA_DIR/auth_token.txt}"
-MAIN_LOG_DIR="/Users/josifbg/Documents/VSCode/frigate-hotreload/test"
-mkdir -p "$MAIN_LOG_DIR"
-MAIN_LOG_FILE="$MAIN_LOG_DIR/test_api.log"
+API="http://127.0.0.1:8080"
+TOKEN_FILE="$ROOT/backend/data/auth_token.txt"
 
-# Colors
-c_reset="\033[0m"; c_green="\033[32m"; c_red="\033[31m"; c_yellow="\033[33m"; c_cyan="\033[36m"; c_bold="\033[1m"
-
-# Per-run logs
 TS="$(date +%Y%m%d_%H%M%S)"
-LOG_DIR="${LOG_DIR:-test_logs_$TS}"
-mkdir -p "$LOG_DIR"
-ERR_LOG="$LOG_DIR/errors.log"
-SUMMARY="$LOG_DIR/summary.txt"
+RUN_DIR="$ROOT/test_logs_${TS}"
+mkdir -p "$RUN_DIR"
 
-pass=0; fail=0
+LOG_SUMMARY="$RUN_DIR/summary.txt"
+ERR_LOG="$RUN_DIR/errors.log"
+: >"$LOG_SUMMARY"
+: >"$ERR_LOG"
 
-log_all() { tee -a "$SUMMARY" "$MAIN_LOG_FILE"; }
-note()  { echo -e "${c_cyan}[$(date +%H:%M:%S)] $*${c_reset}" | log_all; }
-ok()    { echo -e "${c_green}✔ $*${c_reset}" | log_all; pass=$((pass+1)); }
-bad()   { echo -e "${c_red}✖ $*${c_reset}" | log_all; echo "[$(date)] $*" >> "$ERR_LOG"; fail=$((fail+1)); }
-warn()  { echo -e "${c_yellow}⚠ $*${c_reset}" | log_all; }
-
-echo "===== API Test Run $(date) =====" >> "$MAIN_LOG_FILE"
-echo "Run dir: $LOG_DIR" | log_all
-
-pause_step() {
-  local prompt="${1:-Press Enter to continue, (s)kip, (r)etry, (q)uit: }"
-  while true; do
-    read -r -n1 -p "$prompt" key || key=""
-    echo
-    case "$key" in
-      "")   return 0 ;;
-      s|S)  return 10 ;;
-      r|R)  return 20 ;;
-      q|Q)  echo "Aborted by user."; exit 130 ;;
-      *)    echo "Options: [Enter]=continue, s=skip, r=retry, q=quit";;
-    esac
-  done
+say() { printf '%s\n' "$*"; }
+save() { # save HTTP response headers/body pair
+  local name="$1" code="$2" hdr="$3" body="$4"
+  echo "$hdr" > "$RUN_DIR/${name}.h"
+  echo "$body" > "$RUN_DIR/${name}.json"
+  printf "[%s] %s -> HTTP %s\n" "$(date +%H:%M:%S)" "$name" "$code" | tee -a "$LOG_SUMMARY"
 }
 
-show_last_http() {
-  local name="$1"
-  local hdr="$LOG_DIR/${name}.h"
-  local body="$LOG_DIR/${name}.json"
-  echo -e "${c_bold}--- ${name} RESPONSE (headers) ---${c_reset}"
-  sed -n '1,20p' "$hdr" | tee -a "$MAIN_LOG_FILE"
-  echo -e "${c_bold}--- ${name} BODY (pretty) ---${c_reset}"
-  if jq . "$body" >/dev/null 2>&1; then
-    jq . "$body" | tee -a "$MAIN_LOG_FILE"
+# ---------- Auth helpers ----------
+read_token() {
+  [[ -f "$TOKEN_FILE" ]] || return 1
+  # JSON формат { "token": "...", "expires": 123 } или plain текст
+  local t
+  t="$(jq -r 'if type=="object" and .token then .token else empty end' "$TOKEN_FILE" 2>/dev/null || true)"
+  if [[ -z "$t" ]]; then t="$(tr -d '\r\n' < "$TOKEN_FILE")"; fi
+  [[ -n "$t" ]] || return 1
+  printf '%s' "$t"
+}
+
+AUTH_HEADER=()
+set_auth_header() {
+  local tok
+  if tok="$(read_token 2>/dev/null)"; then
+    AUTH_HEADER=( -H "Authorization: Bearer $tok" )
   else
-    cat "$body" | tee -a "$MAIN_LOG_FILE"
+    AUTH_HEADER=()
   fi
+  # Диагностика
+  {
+    echo "== auth debug =="
+    echo "time: $(date)"
+    if [[ ${#AUTH_HEADER[@]} -gt 0 ]]; then
+      echo "token_prefix: $(printf '%s' "$(read_token)" | cut -c1-8)"
+      echo "header_used: Authorization: Bearer <redacted>"
+    else
+      echo "header_used: <none>"
+    fi
+  } > "$RUN_DIR/auth_debug.txt"
+}
+
+generate_token() {
+  local gen tok exp
+  gen="$(curl -sS -X POST "$API/api/auth/generate" || echo '{}')"
+  tok="$(jq -r '.token // empty' <<<"$gen" 2>/dev/null || true)"
+  exp="$(jq -r '.expires_at // empty' <<<"$gen" 2>/dev/null || true)"
+  mkdir -p "$(dirname "$TOKEN_FILE")"
+  if [[ -n "$tok" ]]; then
+    if [[ -n "$exp" ]]; then
+      printf '{ "token":"%s", "expires": %s }\n' "$tok" "$exp" >"$TOKEN_FILE"
+    else
+      printf '{ "token":"%s" }\n' "$tok" >"$TOKEN_FILE"
+    fi
+    return 0
+  fi
+  return 1
+}
+
+auth_enabled() {
+  local st; st="$(curl -sS "$API/api/auth/status" || echo '{}')"
+  [[ "$(jq -r '.enabled // false' <<<"$st")" == "true" ]]
 }
 
 ensure_token() {
-  if [ -f "$TOKEN_FILE" ]; then
-    TOKEN="$(tr -d '\r\n' < "$TOKEN_FILE" 2>/dev/null || true)"
-  else
-    TOKEN=""
+  if ! auth_enabled; then
+    AUTH_HEADER=()  # auth disabled
+    return 0
   fi
-  if [ -z "${TOKEN:-}" ]; then
-    note "No token found; generating…"
-    curl -sS -X POST "$BASE/api/auth/generate" -o "$LOG_DIR/gen_token.json"
-    TOKEN="$(jq -r '.token' "$LOG_DIR/gen_token.json" 2>/dev/null || true)"
-    if [ -n "$TOKEN" ]; then
-      mkdir -p "$DATA_DIR"
-      printf "%s" "$TOKEN" > "$TOKEN_FILE"
-      ok "Token generated"
-    else
-      bad "Failed to generate token"; return 1
+
+  # 1) опитай със съществуващ токен
+  set_auth_header
+  if [[ ${#AUTH_HEADER[@]} -gt 0 ]]; then
+    local code
+    code="$(curl -sS -o /dev/null -w '%{http_code}' "${AUTH_HEADER[@]}" "$API/api/config" || echo 000)"
+    if [[ "$code" == "200" ]]; then
+      return 0
     fi
   fi
-  AUTH=(-H "Authorization: Bearer $TOKEN")
+
+  # 2) генерирай нов токен и провери отново (до 2 опита)
+  for _ in 1 2; do
+    if generate_token; then
+      set_auth_header
+      local code
+      code="$(curl -sS -o /dev/null -w '%{http_code}' "${AUTH_HEADER[@]}" "$API/api/config" || echo 000)"
+      if [[ "$code" == "200" ]]; then
+        return 0
+      fi
+    fi
+  done
+
+  # оставяме header (може да е празен) — заявката ще се логне като 403
+  return 0
 }
 
-http() {
-  local name="$1" method="$2" path="$3" data_file="${4:-}"
-  local hdr="$LOG_DIR/${name}.h" body="$LOG_DIR/${name}.json"
-  local code
-  if [ -n "$data_file" ]; then
-    code=$(curl -sS -D "$hdr" -o "$body" -w "%{http_code}" \
-      "${AUTH[@]}" -H 'Content-Type: application/json' \
-      -X "$method" "$BASE$path" --data-binary @"$data_file" || echo 000)
+# ---------- Request wrapper ----------
+req_json() {
+  # usage: req_json NAME METHOD PATH [DATA_JSON or empty]
+  local name="$1" method="$2" path="$3" data="${4:-}"
+
+  ensure_token
+
+  local tmp_body="$RUN_DIR/.tmp_body.$$"
+  local code hdr
+  if [[ -n "$data" ]]; then
+    code="$(curl -sS -D "$RUN_DIR/${name}.h" -o "$tmp_body" \
+      -w '%{http_code}' "${AUTH_HEADER[@]}" -H 'Content-Type: application/json' \
+      -X "$method" "$API$path" --data-binary "$data" || echo 000)"
   else
-    code=$(curl -sS -D "$hdr" -o "$body" -w "%{http_code}" \
-      "${AUTH[@]}" -X "$method" "$BASE$path" || echo 000)
+    code="$(curl -sS -D "$RUN_DIR/${name}.h" -o "$tmp_body" \
+      -w '%{http_code}' "${AUTH_HEADER[@]}" \
+      -X "$method" "$API$path" || echo 000)"
   fi
-  { echo -e "\n# ${name} [$method $path]"; cat "$hdr"; echo; cat "$body"; echo; } >> "$MAIN_LOG_FILE"
-  echo "$code"
-}
+  hdr="$(cat "$RUN_DIR/${name}.h")"
 
-require_200_json() {
-  local name="$1" code="$2"
-  if [ "$code" != "200" ]; then
-    bad "$name -> HTTP $code (see $LOG_DIR/${name}.h)"
-    return 1
+  # pretty JSON ако може
+  local body
+  if jq -e . >/dev/null 2>&1 <"$tmp_body"; then
+    body="$(jq . <"$tmp_body")"
+  else
+    body="$(cat "$tmp_body")"
   fi
-  if ! jq . "$LOG_DIR/${name}.json" >/dev/null 2>&1; then
-    bad "$name -> non-JSON body"
-    return 1
+  rm -f "$tmp_body"
+
+  save "$name" "$code" "$hdr" "$body"
+
+  if [[ "$code" =~ ^2 ]]; then
+    say "✔ $name"
+    echo "--- STEP OK ---"
+    return 0
+  else
+    say "✖ $name -> HTTP $code (see $RUN_DIR/${name}.h)"
+    echo "$body" >>"$ERR_LOG"
+    echo "--- STEP FAILED (rc=1) ---"
+    while true; do
+      read -rp "Retry (r), skip (s), quit (q) or Enter to retry: " a
+      case "${a:-r}" in
+        q|Q) exit 130;;
+        s|S) return 1;;
+        r|R|'') return 2;;
+      esac
+    done
   fi
-  ok "$name"
-}
-
-# --- Steps ---
-step_ping() {
-  note "[1/11] PING"
-  local code; code=$(http ping GET /api/ping)
-  show_last_http ping
-  require_200_json ping "$code"
-}
-
-step_auth_status() {
-  note "[2/11] AUTH STATUS"
-  local code; code=$(http auth_status GET /api/auth/status)
-  show_last_http auth_status
-  require_200_json auth_status "$code"
-}
-
-step_snapshot_config() {
-  note "[3/11] SNAPSHOT CONFIG"
-  local code; code=$(http get_config GET /api/config)
-  show_last_http get_config
-  if require_200_json get_config "$code"; then
-    cp "$LOG_DIR/get_config.json" "$LOG_DIR/original_config.json"
-    ok "Saved baseline to original_config.json"
-  fi
-}
-
-step_validate_config() {
-  note "[4/11] VALIDATE CURRENT CONFIG"
-  cp "$LOG_DIR/get_config.json" "$LOG_DIR/validate_in.json"
-  local code; code=$(http validate POST /api/config/validate "$LOG_DIR/validate_in.json")
-  show_last_http validate
-  require_200_json validate "$code"
-}
-
-step_apply_dry() {
-  note "[5/11] APPLY (DRY)"
-  local code; code=$(http apply_dry POST "/api/config/apply?dry=true" "$LOG_DIR/get_config.json")
-  show_last_http apply_dry
-  require_200_json apply_dry "$code"
-}
-
-step_clone_dry_apply() {
-  note "[6/11] CLONE CAMERA (DRY + APPLY)"
-  local first; first=$(jq -r '.cameras | keys[0]' "$LOG_DIR/get_config.json")
-  [ -z "$first" ] && { bad "No cameras in config"; return 1; }
-  echo "{\"source_key\":\"$first\",\"target_key\":\"__test_cam\",\"overwrite\":true,\"apply\":false}" > "$LOG_DIR/clone_dry_in.json"
-  local code; code=$(http clone_dry POST /api/cameras/clone "$LOG_DIR/clone_dry_in.json")
-  show_last_http clone_dry
-  require_200_json clone_dry "$code" || return 1
-  echo "{\"source_key\":\"$first\",\"target_key\":\"__test_cam\",\"overwrite\":true,\"apply\":true}" > "$LOG_DIR/clone_apply_in.json"
-  code=$(http clone_apply POST /api/cameras/clone "$LOG_DIR/clone_apply_in.json")
-  show_last_http clone_apply
-  require_200_json clone_apply "$code"
-}
-
-step_reorder() {
-  note "[7/11] REORDER (PUT __test_cam FIRST)"
-  jq --arg t "__test_cam" '.cameras as $c | {order: ([ $t ] + ([ $c | keys[] ] | unique)), apply:true}' \
-    "$LOG_DIR/get_config.json" > "$LOG_DIR/reorder_in.json"
-  local code; code=$(http reorder POST /api/cameras/reorder "$LOG_DIR/reorder_in.json")
-  show_last_http reorder
-  require_200_json reorder "$code"
-}
-
-step_set_and_delete_tmp() {
-  note "[8/11] ADD TEMP CAMERA, THEN DELETE"
-  cat > "$LOG_DIR/set_cam_in.json" <<JSON
-{"key":"__tmp_add","value":{
-  "name":"Temporary Cam",
-  "enabled":true,
-  "ffmpeg":{"url":"rtsp://user:pass@host/stream","width":1280,"height":720,"fps":10}
-},"apply":true}
-JSON
-  local code; code=$(http set_cam POST /api/cameras/set "$LOG_DIR/set_cam_in.json")
-  show_last_http set_cam
-  require_200_json set_cam "$code" || return 1
-  echo '{"key":"__tmp_add","apply":true}' > "$LOG_DIR/del_tmp_in.json"
-  code=$(http del_tmp POST /api/cameras/delete "$LOG_DIR/del_tmp_in.json")
-  show_last_http del_tmp
-  require_200_json del_tmp "$code"
-}
-
-step_bulk_delete_dry() {
-  note "[9/11] BULK DELETE (DRY)"
-  echo '{"keys":["__test_cam"],"apply":false}' > "$LOG_DIR/bulk_dry_in.json"
-  local code; code=$(http bulk_dry POST /api/cameras/bulk_delete "$LOG_DIR/bulk_dry_in.json")
-  show_last_http bulk_dry
-  require_200_json bulk_dry "$code"
-}
-
-step_export() {
-  note "[10/11] EXPORT CONFIG"
-  local code; code=$(http export GET /api/config/export)
-  show_last_http export
-  require_200_json export "$code"
-}
-
-step_cleanup_and_restore() {
-  note "[11/11] CLEANUP (__test_cam) + RESTORE BASELINE"
-  echo '{"key":"__test_cam","apply":true}' > "$LOG_DIR/del_test_in.json"
-  local code; code=$(http del_test POST /api/cameras/delete "$LOG_DIR/del_test_in.json")
-  show_last_http del_test
-  cp "$LOG_DIR/original_config.json" "$LOG_DIR/restore_in.json"
-  code=$(http restore POST /api/config/import "$LOG_DIR/restore_in.json")
-  show_last_http restore
-  require_200_json restore "$code"
 }
 
 run_step() {
-  local fn="$1"
+  local title="$1"; shift
   while true; do
-    "$fn"; local rc=$?
-    if [ $rc -eq 0 ]; then
-      echo -e "${c_green}--- STEP OK ---${c_reset}"
-      pause_step "Continue (Enter), skip (s), retry (r), quit (q): "
-      local action=$?
-      if [ $action -eq 20 ]; then warn "Retrying…"; continue
-      elif [ $action -eq 10 ]; then warn "Skipping."; return 0
-      else return 0; fi
+    printf "\n[%s] %s\n" "$(date +%H:%M:%S)" "$title"
+    if "$@"; then
+      read -rp "Continue (Enter), skip (s), retry (r), quit (q): " x
+      case "${x:-}" in
+        q|Q) exit 130;;
+        s|S) return 0;;
+        r|R) continue;;
+        *)   return 0;;
+      esac
     else
-      echo -e "${c_red}--- STEP FAILED (rc=$rc) ---${c_reset}"
-      pause_step "Retry (r), skip (s), quit (q) or Enter to retry: "
-      local action=$?
-      if [ $action -eq 10 ]; then warn "Skipping failed step."; return 0
-      elif [ $action -eq 20 ] || [ $action -eq 0 ]; then warn "Retrying…"; continue
-      else exit 1; fi
+      return 0
     fi
   done
 }
 
-main() {
-  note "Ensuring token…"; ensure_token || exit 1
+# ---------- Steps ----------
+step_ping() { req_json ping GET /api/ping; }
+step_auth_status() { req_json auth_status GET /api/auth/status; }
+step_get_config() { req_json get_config GET /api/config; }
 
-  run_step step_ping
-  run_step step_auth_status
-  run_step step_snapshot_config
-  run_step step_validate_config
-  run_step step_apply_dry
-  run_step step_clone_dry_apply
-  run_step step_reorder
-  run_step step_set_and_delete_tmp
-  run_step step_bulk_delete_dry
-  run_step step_export
-  run_step step_cleanup_and_restore
-
-  echo "" | log_all
-  echo "Passed: $pass" | log_all
-  echo "Failed: $fail" | log_all
-  echo "Run logs: $LOG_DIR" | log_all
-  echo "Main log (append): $MAIN_LOG_FILE" | log_all
-
-  echo -e "${c_bold}Done.${c_reset} See ${c_cyan}$LOG_DIR${c_reset} and ${c_cyan}$MAIN_LOG_FILE${c_reset}."
+step_validate_current() {
+  ensure_token
+  local cfg; cfg="$(curl -sS "${AUTH_HEADER[@]}" "$API/api/config" || echo '{}')"
+  req_json validate POST /api/config/validate "$cfg"
 }
 
-main "$@"
+step_apply_dry() {
+  ensure_token
+  local cfg; cfg="$(curl -sS "${AUTH_HEADER[@]}" "$API/api/config" || echo '{}')"
+  req_json apply_dry POST "/api/config/apply?dry=true" "$cfg"
+}
+
+step_clone_cam() {
+  ensure_token
+  local cfg keys src tgt
+  cfg="$(curl -sS "${AUTH_HEADER[@]}" "$API/api/config" || echo '{}')"
+  keys="$(jq -r '.cameras | keys[]?' <<<"$cfg" 2>/dev/null || true)"
+  src="$(head -n1 <<<"$keys" || true)"
+  [[ -z "$src" ]] && { echo "✖ No cameras in config" | tee -a "$ERR_LOG"; return 1; }
+  tgt="__test_cam"
+  req_json clone_dry POST /api/cameras/clone "$(jq -nc --arg s "$src" --arg t "$tgt" '{source_key:$s,target_key:$t,overwrite:true,apply:false}')"
+  req_json clone_apply POST /api/cameras/clone "$(jq -nc --arg s "$src" --arg t "$tgt" '{source_key:$s,target_key:$t,overwrite:true,apply:true}')"
+}
+
+step_reorder() {
+  ensure_token
+  local cfg order
+  cfg="$(curl -sS "${AUTH_HEADER[@]}" "$API/api/config" || echo '{}')"
+  order="$(jq -r '.cameras | keys | if length>0 then [.[-1]] + (.[0:-1]) else . end' <<<"$cfg" 2>/dev/null || echo '[]')"
+  echo "$order" > "$RUN_DIR/reorder_in.json"
+  req_json reorder POST /api/cameras/reorder "$(jq -nc --argjson o "$order" '{order:$o, apply:true}')"
+}
+
+step_set_then_delete() {
+  local body='{"key":"__tmp_cam","value":{"name":"tmp","enabled":true,"ffmpeg":{"url":"rtsp://user:pass@h/stream","width":1280,"height":720,"fps":10}},"apply":true}'
+  echo "$body" > "$RUN_DIR/set_cam_in.json"
+  req_json set_cam POST /api/cameras/set "$body" || return 1
+  req_json del_cam POST /api/cameras/delete '{"key":"__tmp_cam","apply":true}'
+}
+
+step_bulk_dry() {
+  echo '["__test_cam","__tmp_cam"]' > "$RUN_DIR/bulk_dry_in.json"
+  req_json bulk_dry POST /api/cameras/bulk_delete '{"keys":["__test_cam","__tmp_cam"],"apply":false}'
+}
+
+step_export() { req_json export GET /api/config/export; }
+step_rollback() { req_json rollback POST /api/config/rollback ''; }
+
+# ---------- Run ----------
+echo "Run dir: $(basename "$RUN_DIR")"
+run_step "[1/11] PING"                         step_ping
+run_step "[2/11] AUTH STATUS"                  step_auth_status
+run_step "[3/11] SNAPSHOT CONFIG"              step_get_config
+run_step "[4/11] VALIDATE CURRENT CONFIG"      step_validate_current
+run_step "[5/11] APPLY (DRY)"                  step_apply_dry
+run_step "[6/11] CLONE CAMERA (DRY + APPLY)"   step_clone_cam
+run_step "[7/11] REORDER (MOVE LAST FIRST)"    step_reorder
+run_step "[8/11] ADD TEMP CAMERA, THEN DELETE" step_set_then_delete
+run_step "[9/11] BULK DELETE (DRY)"            step_bulk_dry
+run_step "[10/11] EXPORT CONFIG"               step_export
+run_step "[11/11] ROLLBACK LATEST"             step_rollback
+
+echo "All steps finished. See $RUN_DIR"
+exit 0

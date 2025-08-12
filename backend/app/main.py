@@ -85,21 +85,50 @@ DATA_DIR = BASE_DIR.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # -----------------------------------------------------------------------------
-# Auth token helpers
+# Auth token helpers (with sliding expiration)
 # -----------------------------------------------------------------------------
+import time
+
 TOKEN_FILE = DATA_DIR / "auth_token.txt"
+TOKEN_TTL_SECONDS = 7 * 24 * 3600  # 7 days
+TOKEN_RENEW_THRESHOLD = 5 * 60      # auto-extend when <5 minutes remain
+
+def _now() -> int:
+    return int(time.time())
+
+def _load_token_record() -> dict | None:
+    """Return {token:str, expires:int|None} or None. Backward compatible with plain text file."""
+    try:
+        if not TOKEN_FILE.exists():
+            return None
+        raw = TOKEN_FILE.read_text().strip()
+        if not raw:
+            return None
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict) and "token" in data:
+                exp = data.get("expires")
+                return {"token": str(data["token"]), "expires": int(exp) if exp else None}
+        except Exception:
+            # Old format: plain token string
+            return {"token": raw, "expires": None}
+    except Exception:
+        return None
+
+def _save_token_record(token: str, expires: int | None = None) -> None:
+    payload = {"token": token}
+    if expires:
+        payload["expires"] = int(expires)
+    TOKEN_FILE.write_text(json.dumps(payload))
+
+# Back-compat helpers used elsewhere in code
 
 def _load_token() -> str | None:
-    try:
-        if TOKEN_FILE.exists():
-            t = TOKEN_FILE.read_text().strip()
-            return t or None
-    except Exception:
-        pass
-    return None
+    rec = _load_token_record()
+    return rec["token"] if rec else None
 
 def _save_token(token: str) -> None:
-    TOKEN_FILE.write_text(token)
+    _save_token_record(token, _now() + TOKEN_TTL_SECONDS)
 
 
 manager = ConfigManager(DATA_DIR)
@@ -222,16 +251,21 @@ bus = WSBus()
 # -----------------------------------------------------------------------------
 @app.get("/api/auth/status")
 def auth_status() -> dict:
-    t = _load_token()
-    return {"enabled": bool(t), "have_token": bool(t)}
+    rec = _load_token_record()
+    if not rec:
+        return {"enabled": False, "have_token": False, "seconds_left": None, "expires_at": None}
+    exp = rec.get("expires")
+    left = max(0, int(exp - _now())) if exp else None
+    return {"enabled": True, "have_token": True, "seconds_left": left, "expires_at": exp}
 
 
 @app.post("/api/auth/generate")
 def auth_generate() -> dict:
-    # Generate and persist a new token (idempotent: always generates fresh one)
+    # Generate and persist new token with TTL
     token = secrets.token_urlsafe(32)
-    _save_token(token)
-    return {"ok": True, "token": token}
+    exp = _now() + TOKEN_TTL_SECONDS
+    _save_token_record(token, exp)
+    return {"ok": True, "token": token, "expires_at": exp, "seconds_left": TOKEN_TTL_SECONDS}
 
 
 @app.post("/api/auth/disable")
@@ -717,8 +751,8 @@ async def auth_middleware(request: Request, call_next):
     if any(path == p or path.startswith(p) for p in WHITELIST_PREFIXES):
         return await call_next(request)
 
-    token = _load_token()
-    if not token:
+    rec = _load_token_record()
+    if not rec:
         # No token configured -> open access (dev mode)
         return await call_next(request)
 
@@ -726,9 +760,21 @@ async def auth_middleware(request: Request, call_next):
     if not auth or not auth.lower().startswith("bearer "):
         return JSONResponse({"ok": False, "error": {"error": "Missing Bearer token", "type": "AuthError"}}, status_code=403)
     sent = auth.split(" ", 1)[1].strip()
-    if secrets.compare_digest(sent, token):
-        return await call_next(request)
-    return JSONResponse({"ok": False, "error": {"error": "Invalid token", "type": "AuthError"}}, status_code=403)
+    if not secrets.compare_digest(sent, rec["token"]):
+        return JSONResponse({"ok": False, "error": {"error": "Invalid token", "type": "AuthError"}}, status_code=403)
+
+    # Auto-extend if close to expiry
+    exp = rec.get("expires")
+    if exp:
+        left = int(exp - _now())
+        if left < TOKEN_RENEW_THRESHOLD:
+            new_exp = _now() + TOKEN_TTL_SECONDS
+            try:
+                _save_token_record(rec["token"], new_exp)
+            except Exception:
+                pass
+
+    return await call_next(request)
 
 
 # -----------------------------------------------------------------------------

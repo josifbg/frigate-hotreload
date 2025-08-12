@@ -1,0 +1,2 @@
+[Tue Aug 12 09:47:50 EEST 2025] get_config -> HTTP 403 (see test_logs_20250812_094739/get_config.h)
+[Tue Aug 12 09:47:59 EEST 2025] validate -> HTTP 403 (see test_logs_20250812_094739/validate.h)

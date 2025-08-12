@@ -1,0 +1,4 @@
+== auth debug ==
+time: Tue Aug 12 10:15:30 EEST 2025
+token_prefix: 6RgLVIAP
+header_used: Authorization: Bearer <redacted>
